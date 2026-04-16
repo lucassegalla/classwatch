@@ -1,0 +1,46 @@
+# Java
+target/
+*.class
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Áudios e dados
+data/audio/*
+!data/audio/.gitkeep
+
+data/transcricao/*
+!data/transcricao/.gitkeep
+!data/transcricao/*.txt
+
+*.aac
+*.mp3
+*.wav
+
+# Config sensível
+.env
+.env.*
+
+# Secrets
+*.key
+*.pem
+*.p12
+*.keystore
+*.jks
+
+# Banco local
+*.db
+*.sqlite
+
+# Sistema
+.DS_Store
+Thumbs.db
