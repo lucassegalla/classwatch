@@ -9,15 +9,29 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
+/*
+ * Camada de regra de negócio
+ * Aqui acontece:
+ * - transcrição
+ * - manipulação de dados
+ * - persistência via repository
+ */
 @Service
 public class LectureService {
 
     private final LectureRepository repository;
+    private final TranscriptionService transcriptionService;
 
-    public LectureService(LectureRepository repository) {
+    public LectureService(LectureRepository repository,
+                          TranscriptionService transcriptionService) {
         this.repository = repository;
+        this.transcriptionService = transcriptionService;
     }
 
+    /*
+     * Executa o script Python que usa Whisper
+     * Recebe o caminho do áudio e retorna o texto transcrito
+     */
     private String transcreverAudio(String caminhoAudio) {
         try {
             ProcessBuilder processBuilder = new ProcessBuilder(
@@ -26,27 +40,46 @@ public class LectureService {
                     caminhoAudio
             );
 
+            /*
+             * NÃO mistura stdout com stderr
+             * Isso evita lixo (warnings) na transcrição
+             */
             processBuilder.redirectErrorStream(false);
+
             Process process = processBuilder.start();
 
+            /*
+             * Lê a saída normal (transcrição)
+             */
             BufferedReader reader = new BufferedReader(
                     new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8)
             );
 
+            /*
+             * Lê erros (warnings do Whisper, etc)
+             * Aqui estamos ignorando
+             */
             BufferedReader errorReader = new BufferedReader(
                     new InputStreamReader(process.getErrorStream(), StandardCharsets.UTF_8)
             );
 
-            // ignora erros do Python (warnings, etc.)
-            while (errorReader.readLine() != null) {}
+            while (errorReader.readLine() != null) {
+                // ignorando warnings
+            }
 
             StringBuilder output = new StringBuilder();
             String linha;
 
+            /*
+             * Lê a transcrição linha por linha
+             */
             while ((linha = reader.readLine()) != null) {
                 output.append(linha).append("\n");
             }
 
+            /*
+             * Espera o processo Python terminar
+             */
             process.waitFor();
 
             return output.toString().trim();
@@ -57,27 +90,48 @@ public class LectureService {
         }
     }
 
+    /*
+     * Cria uma nova lecture
+     */
     public Lecture salvar(Lecture lecture) {
 
-        String transcricao = transcreverAudio(lecture.getAudioPath());
+        // 1. Define status inicial
+        lecture.setStatus("PROCESSANDO");
 
-        lecture.setTranscricao(transcricao);
-        lecture.setResumo("Resumo automático (placeholder)");
+        // 2. Salva no banco
+        Lecture salva = repository.save(lecture);
 
-        return repository.save(lecture);
+        // 3. Dispara processamento em background (vamos criar no próximo passo)
+        transcriptionService.processar(salva);
+
+        // 4. Retorna imediatamente
+        return salva;
     }
 
+    /*
+     * Lista todas as lectures
+     */
     public List<Lecture> listar() {
         return repository.findAll();
     }
 
+    /*
+     * Atualiza uma lecture existente
+     */
     public Lecture atualizar(Long id, Lecture novaLecture) {
+
         Lecture lectureExistente = repository.findById(id).orElse(null);
 
+        /*
+         * Se não existir, retorna null (melhorar depois)
+         */
         if (lectureExistente == null) {
             return null;
         }
 
+        /*
+         * Atualiza os campos
+         */
         lectureExistente.setTitulo(novaLecture.getTitulo());
         lectureExistente.setDescricao(novaLecture.getDescricao());
         lectureExistente.setAudioPath(novaLecture.getAudioPath());
