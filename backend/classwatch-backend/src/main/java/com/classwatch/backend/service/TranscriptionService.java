@@ -69,8 +69,31 @@ public class TranscriptionService {
             /*
              * Atualiza a lecture
              */
-            lecture.setTranscricao(output.toString().trim());
-            lecture.setResumo("Resumo automático (placeholder)");
+            String resultado = output.toString();
+
+            String transcricao = "";
+            String resumo = "";
+
+            if (resultado.contains("###TRANSCRICAO###") && resultado.contains("###RESUMO###")) {
+
+                String[] partes = resultado.split("###TRANSCRICAO###");
+                if (partes.length > 1) {
+                    String[] subPartes = partes[1].split("###RESUMO###");
+
+                    transcricao = subPartes[0].trim();
+
+                    if (subPartes.length > 1) {
+                        resumo = subPartes[1].trim();
+                    }
+                }
+            }
+
+            lecture.setTranscricao(transcricao);
+            lecture.setResumo(resumo);
+            lecture.setStatus("FINALIZADO");
+
+            repository.save(lecture);
+
             lecture.setStatus("FINALIZADO");
 
             repository.save(lecture);
