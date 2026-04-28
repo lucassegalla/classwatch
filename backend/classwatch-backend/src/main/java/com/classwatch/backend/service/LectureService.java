@@ -18,38 +18,6 @@ public class LectureService {
         this.repository = repository;
     }
 
-    private String executarPython(String caminhoAudio) {
-        try {
-            ProcessBuilder pb = new ProcessBuilder(
-                    "python",
-                    "C:\\Users\\Usuario\\Documents\\Projetos\\classwatch\\ai\\transcricao.py",
-                    caminhoAudio
-            );
-
-            pb.redirectErrorStream(true);
-            Process process = pb.start();
-
-            BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(process.getInputStream())
-            );
-
-            StringBuilder resultado = new StringBuilder();
-            String linha;
-
-            while ((linha = reader.readLine()) != null) {
-                resultado.append(linha).append("\n");
-            }
-
-            process.waitFor();
-
-            return resultado.toString();
-
-        } catch (Exception e) {
-            e.printStackTrace();
-            return "Erro ao transcrever";
-        }
-    }
-
     private String transcreverAudio(String caminhoAudio) {
         try {
             ProcessBuilder processBuilder = new ProcessBuilder(
@@ -69,9 +37,8 @@ public class LectureService {
                     new InputStreamReader(process.getErrorStream(), StandardCharsets.UTF_8)
             );
 
-            while (errorReader.readLine() != null) {
-                // pode ignorar ou logar
-            }
+            // ignora erros do Python (warnings, etc.)
+            while (errorReader.readLine() != null) {}
 
             StringBuilder output = new StringBuilder();
             String linha;
@@ -92,16 +59,11 @@ public class LectureService {
 
     public Lecture salvar(Lecture lecture) {
 
-        // 1. Transcreve o áudio
         String transcricao = transcreverAudio(lecture.getAudioPath());
 
-        // 2. Salva no objeto
         lecture.setTranscricao(transcricao);
-
-        // 3. (opcional) resumo placeholder
         lecture.setResumo("Resumo automático (placeholder)");
 
-        // 4. Salva no banco
         return repository.save(lecture);
     }
 
@@ -116,7 +78,6 @@ public class LectureService {
             return null;
         }
 
-        // Atualiza os campos
         lectureExistente.setTitulo(novaLecture.getTitulo());
         lectureExistente.setDescricao(novaLecture.getDescricao());
         lectureExistente.setAudioPath(novaLecture.getAudioPath());
@@ -125,5 +86,4 @@ public class LectureService {
 
         return repository.save(lectureExistente);
     }
-
 }
