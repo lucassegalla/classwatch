@@ -3,18 +3,19 @@ package com.classwatch.backend.service;
 import com.classwatch.backend.model.Lecture;
 import com.classwatch.backend.repository.LectureRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
+import java.io.File;
+import java.io.IOException;
 import java.util.List;
+import java.util.UUID;
 
 /*
  * Camada de regra de negócio
- * Aqui acontece:
- * - transcrição
- * - manipulação de dados
- * - persistência via repository
+ * Responsável por:
+ * - salvar lectures
+ * - gerenciar upload de áudio
+ * - iniciar processamento assíncrono
  */
 @Service
 public class LectureService {
@@ -22,6 +23,9 @@ public class LectureService {
     private final LectureRepository repository;
     private final TranscriptionService transcriptionService;
 
+    /*
+     * Injeção de dependência
+     */
     public LectureService(LectureRepository repository,
                           TranscriptionService transcriptionService) {
         this.repository = repository;
@@ -29,83 +33,95 @@ public class LectureService {
     }
 
     /*
-     * Executa o script Python que usa Whisper
-     * Recebe o caminho do áudio e retorna o texto transcrito
-     */
-    private String transcreverAudio(String caminhoAudio) {
-        try {
-            ProcessBuilder processBuilder = new ProcessBuilder(
-                    "C:\\Users\\Usuario\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
-                    "C:\\Users\\Usuario\\Documents\\Projetos\\classwatch\\ai\\transcricao.py",
-                    caminhoAudio
-            );
-
-            /*
-             * NÃO mistura stdout com stderr
-             * Isso evita lixo (warnings) na transcrição
-             */
-            processBuilder.redirectErrorStream(false);
-
-            Process process = processBuilder.start();
-
-            /*
-             * Lê a saída normal (transcrição)
-             */
-            BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8)
-            );
-
-            /*
-             * Lê erros (warnings do Whisper, etc)
-             * Aqui estamos ignorando
-             */
-            BufferedReader errorReader = new BufferedReader(
-                    new InputStreamReader(process.getErrorStream(), StandardCharsets.UTF_8)
-            );
-
-            while (errorReader.readLine() != null) {
-                // ignorando warnings
-            }
-
-            StringBuilder output = new StringBuilder();
-            String linha;
-
-            /*
-             * Lê a transcrição linha por linha
-             */
-            while ((linha = reader.readLine()) != null) {
-                output.append(linha).append("\n");
-            }
-
-            /*
-             * Espera o processo Python terminar
-             */
-            process.waitFor();
-
-            return output.toString().trim();
-
-        } catch (Exception e) {
-            e.printStackTrace();
-            return "Erro na transcrição";
-        }
-    }
-
-    /*
-     * Cria uma nova lecture
+     * Cria uma nova lecture (sem upload direto)
+     * Usado quando o frontend já manda um audioPath (caso antigo/teste)
      */
     public Lecture salvar(Lecture lecture) {
 
-        // 1. Define status inicial
+        // Define status inicial
         lecture.setStatus("PROCESSANDO");
 
-        // 2. Salva no banco
+        // Salva no banco
         Lecture salva = repository.save(lecture);
 
-        // 3. Dispara processamento em background (vamos criar no próximo passo)
+        // Dispara processamento em background
         transcriptionService.processar(salva);
 
-        // 4. Retorna imediatamente
+        // Retorna imediatamente (não espera IA)
         return salva;
+    }
+
+    /*
+     * Novo fluxo correto: upload de arquivo real
+     */
+    public Lecture salvarComArquivo(MultipartFile file, String titulo, String descricao) {
+
+        try {
+            /*
+             * 1. Validação básica
+             */
+            if (file.isEmpty()) {
+                throw new RuntimeException("Arquivo vazio");
+            }
+
+            /*
+             * 2. Garante nome seguro
+             */
+            String original = file.getOriginalFilename() != null
+                    ? file.getOriginalFilename()
+                    : "audio.aac";
+
+            String nomeArquivo = UUID.randomUUID() + "_" + original;
+
+            /*
+             * 3. Define pasta de upload (dinâmica)
+             */
+            String pasta = System.getProperty("user.dir") + "/uploads/";
+            File diretorio = new File(pasta);
+
+            if (!diretorio.exists()) {
+                diretorio.mkdirs();
+            }
+
+            /*
+             * 4. Caminho final do arquivo
+             */
+            String caminhoCompleto = pasta + nomeArquivo;
+            File destino = new File(caminhoCompleto);
+
+            /*
+             * 5. Salva arquivo no disco
+             */
+            file.transferTo(destino);
+
+            /*
+             * 6. Cria entidade Lecture
+             */
+            Lecture lecture = new Lecture();
+            lecture.setTitulo(titulo);
+            lecture.setDescricao(descricao);
+            lecture.setAudioPath(destino.getAbsolutePath());
+            lecture.setStatus("PROCESSANDO");
+
+            /*
+             * 7. Salva no banco
+             */
+            Lecture salva = repository.save(lecture);
+
+            /*
+             * 8. Inicia processamento assíncrono
+             */
+            transcriptionService.processar(salva);
+
+            /*
+             * 9. Retorna imediatamente
+             */
+            return salva;
+
+        } catch (IOException e) {
+            e.printStackTrace();
+            throw new RuntimeException("Erro ao salvar arquivo");
+        }
     }
 
     /*
@@ -115,6 +131,10 @@ public class LectureService {
         return repository.findAll();
     }
 
+    public Lecture buscarPorId(Long id) {
+        return repository.findById(id).orElse(null);
+    }
+
     /*
      * Atualiza uma lecture existente
      */
@@ -122,16 +142,12 @@ public class LectureService {
 
         Lecture lectureExistente = repository.findById(id).orElse(null);
 
-        /*
-         * Se não existir, retorna null (melhorar depois)
-         */
+        // Se não existir, retorna null (pode melhorar depois com exception)
         if (lectureExistente == null) {
             return null;
         }
 
-        /*
-         * Atualiza os campos
-         */
+        // Atualiza campos
         lectureExistente.setTitulo(novaLecture.getTitulo());
         lectureExistente.setDescricao(novaLecture.getDescricao());
         lectureExistente.setAudioPath(novaLecture.getAudioPath());

@@ -3,6 +3,7 @@ package com.classwatch.backend.controller;
 import com.classwatch.backend.model.Lecture;
 import com.classwatch.backend.service.LectureService;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -47,6 +48,15 @@ public class LectureController {
         return service.salvar(lecture);
     }
 
+    @PostMapping("/upload")
+    public Lecture upload(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("titulo") String titulo,
+            @RequestParam("descricao") String descricao
+    ) {
+        return service.salvarComArquivo(file, titulo, descricao);
+    }
+
     /*
      * GET /lectures
      * Retorna todas as aulas do banco
@@ -67,4 +77,10 @@ public class LectureController {
     ) {
         return service.atualizar(id, lecture);
     }
+
+    @GetMapping("/{id}")
+    public Lecture buscarPorId(@PathVariable Long id) {
+        return service.buscarPorId(id);
+    }
+
 }
