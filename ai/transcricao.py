@@ -2,7 +2,7 @@ import sys
 import whisper
 import warnings
 import os
-from openai import OpenAI
+# from openai import OpenAI  # ❌ não usado agora
 
 # -----------------------------
 # Configuração
@@ -21,49 +21,50 @@ resultado = model.transcribe(audio_path, language="pt")
 texto_bruto = resultado["text"]
 
 # -----------------------------
-# 2. Cliente da IA (OpenAI)
+# 2. OpenAI (DESATIVADO POR ENQUANTO)
 # -----------------------------
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-# -----------------------------
-# 3. Prompt (instrução da IA)
-# -----------------------------
-prompt = f"""
-Você recebe uma transcrição de aula com erros.
-
-Tarefas:
-1. Corrigir português e palavras quebradas
-2. Melhorar coerência do texto
-3. Manter significado original
-4. Criar resumo em tópicos
-
-Formato obrigatório:
-
-###TRANSCRICAO###
-(texto corrigido)
-
-###RESUMO###
-- tópico 1
-- tópico 2
-- tópico 3
-
-Texto:
-{texto_bruto}
-"""
+# client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # -----------------------------
-# 4. Chamada da IA
+# 3. Prompt (DESATIVADO)
 # -----------------------------
-response = client.chat.completions.create(
-    model="gpt-4o-mini",
-    messages=[
-        {"role": "user", "content": prompt}
-    ]
-)
+# prompt = f"""
+# Você recebe uma transcrição de aula com erros.
+#
+# Tarefas:
+# 1. Corrigir português e palavras quebradas
+# 2. Melhorar coerência do texto
+# 3. Manter significado original
+# 4. Criar resumo em tópicos
+#
+# Formato obrigatório:
+#
+# ###TRANSCRICAO###
+# (texto corrigido)
+#
+# ###RESUMO###
+# - tópico 1
+# - tópico 2
+# - tópico 3
+#
+# Texto:
+# {texto_bruto}
+# """
 
-saida = response.choices[0].message.content
+# -----------------------------
+# 4. Chamada da IA (DESATIVADA)
+# -----------------------------
+# response = client.chat.completions.create(
+#     model="gpt-4o-mini",
+#     messages=[
+#         {"role": "user", "content": prompt}
+#     ]
+# )
+#
+# saida = response.choices[0].message.content
 
 # -----------------------------
 # 5. Retorno para Java
 # -----------------------------
-print(saida)
+
+print(texto_bruto.strip())
