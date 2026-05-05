@@ -2,7 +2,8 @@ import sys
 import whisper
 import warnings
 import os
-# from openai import OpenAI  # ❌ não usado agora
+import re
+from openai import OpenAI
 
 # -----------------------------
 # Configuração
@@ -20,51 +21,63 @@ resultado = model.transcribe(audio_path, language="pt")
 
 texto_bruto = resultado["text"]
 
-# -----------------------------
-# 2. OpenAI (DESATIVADO POR ENQUANTO)
-# -----------------------------
-# client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# 🔧 limpeza do texto (IMPORTANTE)
+texto_limpo = re.sub(r'\s+', ' ', texto_bruto).strip()
 
 # -----------------------------
-# 3. Prompt (DESATIVADO)
+# 2. Cliente OpenAI
 # -----------------------------
-# prompt = f"""
-# Você recebe uma transcrição de aula com erros.
-#
-# Tarefas:
-# 1. Corrigir português e palavras quebradas
-# 2. Melhorar coerência do texto
-# 3. Manter significado original
-# 4. Criar resumo em tópicos
-#
-# Formato obrigatório:
-#
-# ###TRANSCRICAO###
-# (texto corrigido)
-#
-# ###RESUMO###
-# - tópico 1
-# - tópico 2
-# - tópico 3
-#
-# Texto:
-# {texto_bruto}
-# """
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # -----------------------------
-# 4. Chamada da IA (DESATIVADA)
+# 3. Prompt
 # -----------------------------
-# response = client.chat.completions.create(
-#     model="gpt-4o-mini",
-#     messages=[
-#         {"role": "user", "content": prompt}
-#     ]
-# )
-#
-# saida = response.choices[0].message.content
+prompt = f"""
+Você recebe uma transcrição de aula com erros, cortes e partes sem sentido.
+
+TAREFA 1:
+Reescreva completamente a transcrição:
+- Corrija português
+- Reconstrua frases quebradas
+- Preencha partes sem contexto de forma coerente
+- Mantenha o significado original
+- Transforme em um texto fluido e compreensível
+
+TAREFA 2:
+Com base APENAS na transcrição reescrita acima:
+- Crie um resumo em tópicos
+- Use apenas os pontos mais importantes
+- Use quantos tópicos forem necessários
+- Seja direto e objetivo
+
+FORMATO OBRIGATÓRIO:
+
+###TRANSCRICAO###
+(texto totalmente reescrito e corrigido)
+
+###RESUMO###
+- tópico 1
+- tópico 2
+- ...
+
+TRANSCRIÇÃO ORIGINAL:
+{texto_bruto}
+"""
+
+# -----------------------------
+# 4. Chamada da IA
+# -----------------------------
+response = client.chat.completions.create(
+    model="gpt-4o-mini",
+    temperature=0.2,
+    messages=[
+        {"role": "user", "content": prompt}
+    ]
+)
+
+saida = response.choices[0].message.content
 
 # -----------------------------
 # 5. Retorno para Java
 # -----------------------------
-
-print(texto_bruto.strip())
+print(saida.strip())

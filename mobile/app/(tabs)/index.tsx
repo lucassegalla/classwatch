@@ -1,20 +1,30 @@
 import { useState, useEffect, useRef } from 'react';
-import { Button, View, Text } from 'react-native';
-import { Audio } from 'expo-av';
+import {
+  Button,
+  ScrollView,
+  Text,
+  View,
+  ActivityIndicator,
+  TouchableOpacity,
+} from 'react-native';
+import { Asset } from 'expo-asset';
 
 export default function HomeScreen() {
-
-  const [recording, setRecording] = useState<Audio.Recording | null>(null);
-  const [audioUri, setAudioUri] = useState<string | null>(null);
-
   const [lectureId, setLectureId] = useState<number | null>(null);
+
   const [status, setStatus] = useState<string>('');
   const [transcricao, setTranscricao] = useState<string>('');
+  const [resumo, setResumo] = useState<string>('');
+
+  const [lectures, setLectures] = useState<any[]>([]);
+  const [selectedLecture, setSelectedLecture] = useState<any | null>(null);
 
   const emRequisicao = useRef(false);
 
+  const API = 'http://192.168.100.151:8080';
+
   // -----------------------------
-  // BUSCA STATUS (POLLING)
+  // BUSCA STATUS (APENAS NOVO UPLOAD)
   // -----------------------------
   async function buscarStatus(id: number) {
     if (emRequisicao.current) return false;
@@ -22,149 +32,201 @@ export default function HomeScreen() {
     emRequisicao.current = true;
 
     try {
-      const response = await fetch(
-        `http://192.168.100.151:8080/lectures/${id}`
-      );
-
+      const response = await fetch(`${API}/lectures/${id}`);
       const data = await response.json();
-
-      console.log("Status:", data.status);
 
       setStatus(data.status);
 
       if (data.status === 'FINALIZADO') {
-        setTranscricao(data.transcricao ?? 'Transcrição não retornada');
+        setTranscricao(data.transcricao ?? 'Sem transcrição');
+        setResumo(data.resumo ?? 'Sem resumo');
+
+        setSelectedLecture(null); // limpa seleção manual
+
+        await carregarLectures();
         return true;
       }
 
       return false;
-
     } catch (err) {
       console.log('Erro status:', err);
       return false;
-
     } finally {
       emRequisicao.current = false;
     }
   }
 
   // -----------------------------
-  // POLLING
+  // POLLING (SÓ PARA UPLOAD)
   // -----------------------------
   useEffect(() => {
     if (!lectureId) return;
 
     const interval = setInterval(async () => {
       const finalizado = await buscarStatus(lectureId);
-
-      if (finalizado) {
-        clearInterval(interval);
-      }
+      if (finalizado) clearInterval(interval);
     }, 3000);
 
     return () => clearInterval(interval);
-
   }, [lectureId]);
 
   // -----------------------------
-  // GRAVAÇÃO
+  // CARREGAR HISTÓRICO
   // -----------------------------
-  async function startRecording() {
+  useEffect(() => {
+    carregarLectures();
+  }, []);
+
+  async function carregarLectures() {
     try {
-      await Audio.requestPermissionsAsync();
+      const response = await fetch(`${API}/lectures`);
+      const data = await response.json();
+      setLectures(data);
+    } catch (err) {
+      console.log('Erro ao carregar lectures', err);
+    }
+  }
 
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
+  // -----------------------------
+  // TESTE COM ÁUDIO FIXO
+  // -----------------------------
+  async function enviarAudioTeste() {
+    try {
+      setStatus('ENVIANDO');
+      setTranscricao('');
+      setResumo('');
+      setSelectedLecture(null);
 
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      const asset = Asset.fromModule(
+        require('../../assets/audio/aula_corte_4min.aac'),
       );
 
-      setRecording(recording);
+      await asset.downloadAsync();
+      const uri = asset.localUri || asset.uri;
 
-    } catch (err) {
-      console.log('Erro ao iniciar gravação', err);
-    }
-  }
-
-  async function stopRecording() {
-    try {
-      if (!recording) return;
-
-      await recording.stopAndUnloadAsync();
-      const uri = recording.getURI();
-
-      setRecording(null);
-      setAudioUri(uri || null);
-
-      if (uri) {
-        await enviarAudio(uri);
-      }
-
-    } catch (err) {
-      console.log('Erro ao parar gravação', err);
-    }
-  }
-
-  // -----------------------------
-  // UPLOAD
-  // -----------------------------
-  async function enviarAudio(uri: string) {
-    try {
       const formData = new FormData();
 
       formData.append('file', {
         uri,
-        name: 'audio.m4a',
-        type: 'audio/m4a',
+        name: 'aula.aac',
+        type: 'audio/aac',
       } as any);
 
-      formData.append('titulo', 'Aula mobile');
-      formData.append('descricao', 'gravado no app');
+      formData.append('titulo', 'Teste fixo');
+      formData.append('descricao', 'arquivo local');
 
-      const response = await fetch(
-        'http://192.168.100.151:8080/lectures/upload',
-        {
-          method: 'POST',
-          body: formData,
-        }
-      );
+      const response = await fetch(`${API}/lectures/upload`, {
+        method: 'POST',
+        body: formData,
+      });
 
       const data = await response.json();
 
-      console.log("Resposta:", data);
-
       setLectureId(data.id);
       setStatus(data.status);
-
     } catch (err) {
-      console.log("Erro upload:", err);
+      console.log('Erro teste:', err);
     }
   }
+
+  // -----------------------------
+  // SELECIONAR HISTÓRICO (SEM POLLING)
+  // -----------------------------
+  function selecionarLecture(lecture: any) {
+    setSelectedLecture(lecture);
+
+    // limpa resultado atual
+    setTranscricao('');
+    setResumo('');
+    setStatus('');
+  }
+
+  // -----------------------------
+  // DADOS EXIBIDOS
+  // -----------------------------
+  const transcricaoExibida = selectedLecture?.transcricao ?? transcricao;
+
+  const resumoExibido = selectedLecture?.resumo ?? resumo;
 
   // -----------------------------
   // UI
   // -----------------------------
   return (
-    <View style={{ marginTop: 100, alignItems: 'center' }}>
+    <ScrollView
+      contentContainerStyle={{
+        padding: 20,
+        backgroundColor: '#121212',
+      }}
+    >
+      <Text
+        style={{
+          fontSize: 24,
+          fontWeight: 'bold',
+          marginBottom: 20,
+          color: '#fff',
+          textAlign: 'center',
+        }}
+      >
+        ClassWatch
+      </Text>
 
-      <Text>Gravação de áudio</Text>
+      <Button title="Testar áudio fixo" onPress={enviarAudioTeste} />
 
-      <Button title="Gravar" onPress={startRecording} />
-      <Button title="Parar" onPress={stopRecording} />
+      {status !== '' && (
+        <Text style={{ color: '#aaa', marginTop: 10 }}>Status: {status}</Text>
+      )}
 
-      {audioUri && <Text>Áudio gravado!</Text>}
+      {status === 'PROCESSANDO' && <ActivityIndicator />}
 
-      {status !== '' && <Text>Status: {status}</Text>}
+      {/* RESULTADO */}
+      {(transcricaoExibida || resumoExibido) && (
+        <View
+          style={{
+            backgroundColor: '#1e1e1e',
+            padding: 15,
+            borderRadius: 10,
+            marginTop: 20,
+          }}
+        >
+          <Text style={{ color: '#fff', fontWeight: 'bold' }}>Transcrição</Text>
+          <Text style={{ color: '#ddd' }}>{transcricaoExibida}</Text>
 
-      {transcricao ? (
-        <Text style={{ marginTop: 20 }}>
-          {transcricao}
-        </Text>
-      ) : null}
+          <Text
+            style={{
+              color: '#fff',
+              fontWeight: 'bold',
+              marginTop: 10,
+            }}
+          >
+            Resumo
+          </Text>
+          <Text style={{ color: '#ddd' }}>{resumoExibido}</Text>
+        </View>
+      )}
 
-    </View>
+      {/* HISTÓRICO */}
+      <View style={{ marginTop: 30 }}>
+        <Text style={{ color: '#fff', fontWeight: 'bold' }}>Histórico</Text>
+
+        {lectures.map((lecture) => (
+          <TouchableOpacity
+            key={lecture.id}
+            onPress={() => selecionarLecture(lecture)}
+            style={{
+              marginTop: 10,
+              padding: 12,
+              borderRadius: 8,
+              backgroundColor: '#1e1e1e',
+            }}
+          >
+            <Text style={{ color: '#fff', fontWeight: 'bold' }}>
+              {lecture.titulo}
+            </Text>
+
+            <Text style={{ color: '#aaa' }}>Status: {lecture.status}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </ScrollView>
   );
 }
