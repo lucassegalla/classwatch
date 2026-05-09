@@ -53,7 +53,7 @@ public class LectureController {
             @RequestParam("file") MultipartFile file,
             @RequestParam("titulo") String titulo,
             @RequestParam("descricao") String descricao
-    ) {
+    )  {
         return service.salvarComArquivo(file, titulo, descricao);
     }
 
