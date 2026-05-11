@@ -8,7 +8,8 @@ export default function LectureDetails() {
   const [lecture, setLecture] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const API = 'http://192.168.100.151:8080';
+  const API = 'https://carol-snowbound-smite.ngrok-free.dev';
+  //const API = 'http://192.168.100.151:8080';
 
   useEffect(() => {
     carregarLecture();

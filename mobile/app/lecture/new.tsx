@@ -12,7 +12,8 @@ import { Audio } from 'expo-av';
 import { router } from 'expo-router';
 
 export default function NewLectureScreen() {
-  const API = 'http://192.168.100.151:8080';
+  const API = 'https://carol-snowbound-smite.ngrok-free.dev';
+  //const API = 'http://192.168.100.151:8080';
 
   const [titulo, setTitulo] = useState('');
   const [descricao, setDescricao] = useState('');

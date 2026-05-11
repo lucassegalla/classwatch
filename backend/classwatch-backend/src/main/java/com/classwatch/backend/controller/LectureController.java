@@ -4,20 +4,10 @@ import com.classwatch.backend.model.Lecture;
 import com.classwatch.backend.service.LectureService;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-
 import java.util.List;
 
-/*
- * @RestController
- * Indica que essa classe é um controller REST
- * Ou seja, responde requisições HTTP e retorna JSON
- */
 @RestController
 
-/*
- * Define o caminho base da API
- * Tudo aqui começa com: /lectures
- */
 @RequestMapping("/lectures")
 public class LectureController {
 

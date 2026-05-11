@@ -6,7 +6,8 @@ import { router } from 'expo-router';
 export default function HistoryScreen() {
   const [lectures, setLectures] = useState<any[]>([]);
 
-  const API = 'http://192.168.100.151:8080';
+  const API = 'https://carol-snowbound-smite.ngrok-free.dev';
+  //const API = 'http://192.168.100.151:8080';
 
   useEffect(() => {
     carregarLectures();
