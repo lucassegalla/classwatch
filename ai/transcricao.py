@@ -1,83 +1,117 @@
-import sys
-import whisper
-import warnings
+"""Transcreve uma aula e devolve um JSON consumido pelo backend Java."""
+
+from __future__ import annotations
+
+import json
 import os
 import re
-from openai import OpenAI
+import sys
+from pathlib import Path
+from typing import Any
 
-# -----------------------------
-# Configuração
-# -----------------------------
-sys.stdout.reconfigure(encoding='utf-8')
-warnings.filterwarnings("ignore")
 
-audio_path = sys.argv[1]
+def normalizar_texto(texto: str) -> str:
+    """Remove espaços repetidos sem alterar o conteúdo reconhecido."""
+    return re.sub(r"\s+", " ", texto).strip()
 
-# -----------------------------
-# 1. Whisper (transcrição bruta)
-# -----------------------------
-model = whisper.load_model("small")
-resultado = model.transcribe(audio_path, language="pt")
 
-texto_bruto = resultado["text"]
+def transcrever_audio(audio_path: Path) -> str:
+    import whisper
 
-# 🔧 limpeza do texto (IMPORTANTE)
-texto_limpo = re.sub(r'\s+', ' ', texto_bruto).strip()
+    model_name = os.getenv("WHISPER_MODEL", "small")
+    model = whisper.load_model(model_name)
+    resultado = model.transcribe(str(audio_path), language="pt", verbose=False)
+    texto = normalizar_texto(str(resultado.get("text", "")))
 
-# -----------------------------
-# 2. Cliente OpenAI
-# -----------------------------
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    if not texto:
+        raise RuntimeError("O Whisper não reconheceu conteúdo no áudio")
 
-# -----------------------------
-# 3. Prompt
-# -----------------------------
-prompt = f"""
-Você recebe uma transcrição de aula com erros, cortes e partes sem sentido.
+    return texto
 
-TAREFA 1:
-Reescreva completamente a transcrição:
-- Corrija português
-- Reconstrua frases quebradas
-- Preencha partes sem contexto de forma coerente
-- Mantenha o significado original
-- Transforme em um texto fluido e compreensível
 
-TAREFA 2:
-Com base APENAS na transcrição reescrita acima:
-- Crie um resumo em tópicos
-- Use apenas os pontos mais importantes
-- Use quantos tópicos forem necessários
-- Seja direto e objetivo
+def organizar_conteudo(texto: str) -> dict[str, str]:
+    from openai import OpenAI
 
-FORMATO OBRIGATÓRIO:
+    if not os.getenv("OPENAI_API_KEY"):
+        raise RuntimeError("A variável OPENAI_API_KEY não está configurada")
 
-###TRANSCRICAO###
-(texto totalmente reescrito e corrigido)
+    client = OpenAI()
+    model_name = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
-###RESUMO###
-- tópico 1
-- tópico 2
-- ...
+    response = client.chat.completions.create(
+        model=model_name,
+        temperature=0.1,
+        response_format={"type": "json_object"},
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "Você organiza transcrições acadêmicas em português. "
+                    "Preserve rigorosamente o conteúdo original. Nunca invente informações, "
+                    "exemplos, termos ou conclusões. Quando um trecho não puder ser recuperado "
+                    "com segurança, marque-o como [inaudível]. Responda somente com JSON válido."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    "Revise a transcrição abaixo, corrigindo pontuação, ortografia e frases "
+                    "quebradas apenas quando o significado estiver claro. Depois produza um "
+                    "resumo objetivo em tópicos, usando somente informações presentes na aula. "
+                    "Retorne exatamente um objeto com duas strings: "
+                    '{"transcricao":"...","resumo":"- tópico 1\\n- tópico 2"}.\n\n'
+                    f"TRANSCRIÇÃO ORIGINAL:\n{texto}"
+                ),
+            },
+        ],
+    )
 
-TRANSCRIÇÃO ORIGINAL:
-{texto_bruto}
-"""
+    content = response.choices[0].message.content
+    if not content:
+        raise RuntimeError("A OpenAI retornou uma resposta vazia")
 
-# -----------------------------
-# 4. Chamada da IA
-# -----------------------------
-response = client.chat.completions.create(
-    model="gpt-4o-mini",
-    temperature=0.2,
-    messages=[
-        {"role": "user", "content": prompt}
-    ]
-)
+    return validar_resultado(json.loads(content))
 
-saida = response.choices[0].message.content
 
-# -----------------------------
-# 5. Retorno para Java
-# -----------------------------
-print(saida.strip())
+def validar_resultado(resultado: Any) -> dict[str, str]:
+    if not isinstance(resultado, dict):
+        raise ValueError("A resposta da IA não é um objeto JSON")
+
+    transcricao = resultado.get("transcricao")
+    resumo = resultado.get("resumo")
+
+    if not isinstance(transcricao, str) or not transcricao.strip():
+        raise ValueError("A resposta da IA não contém uma transcrição válida")
+    if not isinstance(resumo, str):
+        raise ValueError("A resposta da IA não contém um resumo válido")
+
+    return {
+        "transcricao": transcricao.strip(),
+        "resumo": resumo.strip(),
+    }
+
+
+def processar(audio_path: Path) -> dict[str, str]:
+    if not audio_path.is_file():
+        raise FileNotFoundError(f"Arquivo de áudio não encontrado: {audio_path}")
+
+    texto_bruto = transcrever_audio(audio_path)
+    return organizar_conteudo(texto_bruto)
+
+
+def main() -> int:
+    if len(sys.argv) != 2:
+        print("Uso: python transcricao.py <caminho-do-audio>", file=sys.stderr)
+        return 2
+
+    try:
+        resultado = processar(Path(sys.argv[1]).expanduser().resolve())
+        print(json.dumps(resultado, ensure_ascii=False))
+        return 0
+    except Exception as exception:
+        print(f"Falha no processamento: {exception}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

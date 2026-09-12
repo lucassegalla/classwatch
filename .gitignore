@@ -1,46 +1,52 @@
-# Java
+# Dependências e builds
+node_modules/
 target/
-*.class
+dist/
+build/
+
+# Arquivos locais do Expo
+.expo/
+web-build/
+mobile/ios/
+mobile/android/
 
 # Python
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
+.venv/
+venv/
 
-# IDE
-.vscode/
-.idea/
-
-# Logs
-*.log
-
-# Áudios e dados
+# Áudios e conteúdo gerado
+backend/classwatch-backend/uploads/
 data/audio/*
 !data/audio/.gitkeep
-
 data/transcricao/*
 !data/transcricao/.gitkeep
-!data/transcricao/*.txt
-
 *.aac
+*.m4a
 *.mp3
 *.wav
+*.webm
+*.3gp
 
-# Config sensível
+# Configurações locais e segredos
 .env
 .env.*
-
-# Secrets
+!.env.example
 *.key
 *.pem
 *.p12
 *.keystore
 *.jks
 
-# Banco local
-*.db
-*.sqlite
-
-# Sistema
+# IDE e sistema operacional
+.idea/
+.vscode/
+*.iml
 .DS_Store
 Thumbs.db
+
+# Logs e temporários
+*.log
+*.tmp
+*.tsbuildinfo

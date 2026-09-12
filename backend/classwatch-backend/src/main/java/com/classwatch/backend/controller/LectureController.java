@@ -1,76 +1,73 @@
 package com.classwatch.backend.controller;
 
-import com.classwatch.backend.model.Lecture;
+import com.classwatch.backend.dto.LectureResponse;
+import com.classwatch.backend.dto.LectureUpdateRequest;
 import com.classwatch.backend.service.LectureService;
-import org.springframework.web.bind.annotation.*;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.net.URI;
 import java.util.List;
 
+@Validated
 @RestController
-
 @RequestMapping("/lectures")
 public class LectureController {
 
-    /*
-     * Service responsável pela lógica de negócio
-     * Controller só recebe e responde HTTP
-     */
-    private final LectureService service;
+    private final LectureService lectureService;
 
-    /*
-     * Injeção de dependência (Spring cria o service automaticamente)
-     */
-    public LectureController(LectureService service) {
-        this.service = service;
+    public LectureController(LectureService lectureService) {
+        this.lectureService = lectureService;
     }
 
-    /*
-     * POST /lectures
-     * Cria uma nova aula
-     */
-    @PostMapping
-    public Lecture criar(@RequestBody Lecture lecture) {
-
-        /*
-         * @RequestBody
-         * Converte o JSON enviado no Postman em objeto Java
-         */
-        return service.salvar(lecture);
-    }
-
-    @PostMapping("/upload")
-    public Lecture upload(
+    @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<LectureResponse> upload(
             @RequestParam("file") MultipartFile file,
-            @RequestParam("titulo") String titulo,
-            @RequestParam("descricao") String descricao
-    )  {
-        return service.salvarComArquivo(file, titulo, descricao);
-    }
-
-    /*
-     * GET /lectures
-     * Retorna todas as aulas do banco
-     */
-    @GetMapping
-    public List<Lecture> listar() {
-        return service.listar();
-    }
-
-    /*
-     * PUT /lectures/{id}
-     * Atualiza uma aula existente
-     */
-    @PutMapping("/{id}")
-    public Lecture atualizar(
-            @PathVariable Long id,        // pega o ID da URL
-            @RequestBody Lecture lecture  // pega o corpo JSON
+            @RequestParam("titulo")
+            @NotBlank(message = "O título é obrigatório")
+            @Size(max = 120, message = "O título deve ter no máximo 120 caracteres") String titulo,
+            @RequestParam(value = "descricao", defaultValue = "")
+            @Size(max = 500, message = "A descrição deve ter no máximo 500 caracteres") String descricao
     ) {
-        return service.atualizar(id, lecture);
+        LectureResponse lecture = lectureService.criarComArquivo(file, titulo, descricao);
+        return ResponseEntity.created(URI.create("/lectures/" + lecture.id())).body(lecture);
+    }
+
+    @GetMapping
+    public List<LectureResponse> listar() {
+        return lectureService.listar();
     }
 
     @GetMapping("/{id}")
-    public Lecture buscarPorId(@PathVariable Long id) {
-        return service.buscarPorId(id);
+    public LectureResponse buscarPorId(@PathVariable Long id) {
+        return lectureService.buscarPorId(id);
     }
 
+    @PutMapping("/{id}")
+    public LectureResponse atualizar(
+            @PathVariable Long id,
+            @Valid @RequestBody LectureUpdateRequest request
+    ) {
+        return lectureService.atualizar(id, request);
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> remover(@PathVariable Long id) {
+        lectureService.remover(id);
+        return ResponseEntity.noContent().build();
+    }
 }

@@ -1,74 +1,78 @@
 package com.classwatch.backend.model;
 
-import jakarta.persistence.*;
-import lombok.Data;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Lob;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
-/*
- * @Data (Lombok)
- * Gera automaticamente:
- * - getters
- * - setters
- * - toString()
- * - equals() e hashCode()
- */
-@Data
+import java.time.Instant;
 
-/*
- * Marca essa classe como uma entidade do banco
- * Ou seja, isso vira uma tabela automaticamente
- */
+@Getter
+@Setter
+@NoArgsConstructor
 @Entity
-
-/*
- * Define o nome da tabela no banco
- */
 @Table(name = "lectures")
 public class Lecture {
 
-    /*
-     * Identificador único da entidade (chave primária)
-     */
     @Id
-
-    /*
-     * Define que o ID será gerado automaticamente pelo banco
-     * IDENTITY = auto incremento
-     */
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    /*
-     * Título da aula
-     */
+    @Column(nullable = false, length = 255)
     private String titulo;
 
-    /*
-     * Descrição da aula
-     */
+    @Column(length = 500)
     private String descricao;
 
-    /*
-     * Caminho do arquivo de áudio na máquina
-     * (futuro: pode virar URL de storage)
-     */
+    @Column(name = "audio_path", nullable = false, length = 255)
     private String audioPath;
 
-    /*
-     * @Lob (Large Object)
-     * Usado para textos grandes (transcrição pode ser longa)
-     */
     @Lob
+    @Column(columnDefinition = "TEXT")
     private String transcricao;
 
-    /*
-     * Resumo gerado da aula
-     * Também pode ser grande
-     */
     @Lob
+    @Column(columnDefinition = "TEXT")
     private String resumo;
 
-    /*
-     * status do processamento da transcricao
-     */
-    private String status;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 32)
+    private LectureStatus status = LectureStatus.RECEBIDO;
+
+    @Column(name = "error_message", length = 1000)
+    private String errorMessage;
+
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private Instant createdAt;
+
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
+
+    @Column(name = "processing_started_at")
+    private Instant processingStartedAt;
+
+    @Column(name = "processing_finished_at")
+    private Instant processingFinishedAt;
+
+    @PrePersist
+    void prePersist() {
+        Instant now = Instant.now();
+        createdAt = now;
+        updatedAt = now;
+    }
+
+    @PreUpdate
+    void preUpdate() {
+        updatedAt = Instant.now();
+    }
 }

@@ -1,0 +1,31 @@
+CREATE TABLE IF NOT EXISTS lectures (
+    id BIGSERIAL PRIMARY KEY,
+    titulo VARCHAR(255) NOT NULL,
+    descricao VARCHAR(500),
+    audio_path VARCHAR(255) NOT NULL,
+    transcricao TEXT,
+    resumo TEXT,
+    status VARCHAR(32) NOT NULL DEFAULT 'RECEBIDO',
+    error_message VARCHAR(1000),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    processing_started_at TIMESTAMPTZ,
+    processing_finished_at TIMESTAMPTZ
+);
+
+ALTER TABLE lectures ADD COLUMN IF NOT EXISTS error_message VARCHAR(1000);
+ALTER TABLE lectures ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE lectures ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE lectures ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMPTZ;
+ALTER TABLE lectures ADD COLUMN IF NOT EXISTS processing_finished_at TIMESTAMPTZ;
+
+ALTER TABLE lectures ALTER COLUMN descricao TYPE VARCHAR(500);
+ALTER TABLE lectures ALTER COLUMN status TYPE VARCHAR(32);
+UPDATE lectures SET audio_path = 'missing' WHERE audio_path IS NULL;
+UPDATE lectures SET status = 'ERRO' WHERE status IS NULL;
+ALTER TABLE lectures ALTER COLUMN audio_path SET NOT NULL;
+ALTER TABLE lectures ALTER COLUMN status SET DEFAULT 'RECEBIDO';
+ALTER TABLE lectures ALTER COLUMN status SET NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_lectures_created_at ON lectures (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_lectures_status ON lectures (status);

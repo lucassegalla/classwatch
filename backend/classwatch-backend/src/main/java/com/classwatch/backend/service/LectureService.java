@@ -1,159 +1,87 @@
 package com.classwatch.backend.service;
 
+import com.classwatch.backend.dto.LectureResponse;
+import com.classwatch.backend.dto.LectureUpdateRequest;
+import com.classwatch.backend.exception.ResourceNotFoundException;
 import com.classwatch.backend.model.Lecture;
+import com.classwatch.backend.model.LectureStatus;
 import com.classwatch.backend.repository.LectureRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
-import java.io.IOException;
 import java.util.List;
-import java.util.UUID;
 
-/*
- * Camada de regra de negócio
- * Responsável por:
- * - salvar lectures
- * - gerenciar upload de áudio
- * - iniciar processamento assíncrono
- */
 @Service
 public class LectureService {
 
-    private final LectureRepository repository;
+    private final LectureRepository lectureRepository;
     private final TranscriptionService transcriptionService;
+    private final AudioStorageService audioStorageService;
 
-    /*
-     * Injeção de dependência
-     */
-    public LectureService(LectureRepository repository,
-                          TranscriptionService transcriptionService) {
-        this.repository = repository;
+    public LectureService(
+            LectureRepository lectureRepository,
+            TranscriptionService transcriptionService,
+            AudioStorageService audioStorageService
+    ) {
+        this.lectureRepository = lectureRepository;
         this.transcriptionService = transcriptionService;
+        this.audioStorageService = audioStorageService;
     }
 
-    /*
-     * Cria uma nova lecture (sem upload direto)
-     * Usado quando o frontend já manda um audioPath (caso antigo/teste)
-     */
-    public Lecture salvar(Lecture lecture) {
-
-        // Define status inicial
-        lecture.setStatus("PROCESSANDO");
-
-        // Salva no banco
-        Lecture salva = repository.save(lecture);
-
-        // Dispara processamento em background
-        transcriptionService.processar(salva);
-
-        // Retorna imediatamente (não espera IA)
-        return salva;
-    }
-
-    /*
-     * Novo fluxo correto: upload de arquivo real
-     */
-    public Lecture salvarComArquivo(MultipartFile file, String titulo, String descricao) {
+    public LectureResponse criarComArquivo(MultipartFile file, String titulo, String descricao) {
+        String audioKey = audioStorageService.armazenar(file);
+        Long savedId = null;
 
         try {
-            /*
-             * 1. Validação básica
-             */
-            if (file.isEmpty()) {
-                throw new RuntimeException("Arquivo vazio");
-            }
-
-            /*
-             * 2. Garante nome seguro
-             */
-            String original = file.getOriginalFilename() != null
-                    ? file.getOriginalFilename()
-                    : "audio.aac";
-
-            String nomeArquivo = UUID.randomUUID() + "_" + original;
-
-            /*
-             * 3. Define pasta de upload (dinâmica)
-             */
-            String pasta = System.getProperty("user.dir") + "/uploads/";
-            File diretorio = new File(pasta);
-
-            if (!diretorio.exists()) {
-                diretorio.mkdirs();
-            }
-
-            /*
-             * 4. Caminho final do arquivo
-             */
-            String caminhoCompleto = pasta + nomeArquivo;
-            File destino = new File(caminhoCompleto);
-
-            /*
-             * 5. Salva arquivo no disco
-             */
-            file.transferTo(destino);
-
-            /*
-             * 6. Cria entidade Lecture
-             */
             Lecture lecture = new Lecture();
-            lecture.setTitulo(titulo);
-            lecture.setDescricao(descricao);
-            lecture.setAudioPath(destino.getAbsolutePath());
-            lecture.setStatus("PROCESSANDO");
+            lecture.setTitulo(titulo.trim());
+            lecture.setDescricao(descricao == null ? "" : descricao.trim());
+            lecture.setAudioPath(audioKey);
+            lecture.setStatus(LectureStatus.RECEBIDO);
 
-            /*
-             * 7. Salva no banco
-             */
-            Lecture salva = repository.save(lecture);
-
-            /*
-             * 8. Inicia processamento assíncrono
-             */
-            transcriptionService.processar(salva);
-
-            /*
-             * 9. Retorna imediatamente
-             */
-            return salva;
-
-        } catch (IOException e) {
-            e.printStackTrace();
-            throw new RuntimeException("Erro ao salvar arquivo");
+            Lecture saved = lectureRepository.save(lecture);
+            savedId = saved.getId();
+            transcriptionService.processar(saved.getId());
+            return LectureResponse.from(saved);
+        } catch (RuntimeException exception) {
+            if (savedId != null) {
+                lectureRepository.deleteById(savedId);
+            }
+            audioStorageService.remover(audioKey);
+            throw exception;
         }
     }
 
-    /*
-     * Lista todas as lectures
-     */
-    public List<Lecture> listar() {
-        return repository.findAll();
+    @Transactional(readOnly = true)
+    public List<LectureResponse> listar() {
+        return lectureRepository.findAllByOrderByCreatedAtDesc().stream()
+                .map(LectureResponse::from)
+                .toList();
     }
 
-    public Lecture buscarPorId(Long id) {
-        return repository.findById(id).orElse(null);
+    @Transactional(readOnly = true)
+    public LectureResponse buscarPorId(Long id) {
+        return LectureResponse.from(buscarEntidade(id));
     }
 
-    /*
-     * Atualiza uma lecture existente
-     */
-    public Lecture atualizar(Long id, Lecture novaLecture) {
+    @Transactional
+    public LectureResponse atualizar(Long id, LectureUpdateRequest request) {
+        Lecture lecture = buscarEntidade(id);
+        lecture.setTitulo(request.titulo().trim());
+        lecture.setDescricao(request.descricao() == null ? "" : request.descricao().trim());
+        return LectureResponse.from(lectureRepository.save(lecture));
+    }
 
-        Lecture lectureExistente = repository.findById(id).orElse(null);
+    @Transactional
+    public void remover(Long id) {
+        Lecture lecture = buscarEntidade(id);
+        lectureRepository.delete(lecture);
+        audioStorageService.remover(lecture.getAudioPath());
+    }
 
-        // Se não existir, retorna null (pode melhorar depois com exception)
-        if (lectureExistente == null) {
-            return null;
-        }
-
-        // Atualiza campos
-        lectureExistente.setTitulo(novaLecture.getTitulo());
-        lectureExistente.setDescricao(novaLecture.getDescricao());
-        lectureExistente.setAudioPath(novaLecture.getAudioPath());
-        lectureExistente.setTranscricao(novaLecture.getTranscricao());
-        lectureExistente.setResumo(novaLecture.getResumo());
-
-        return repository.save(lectureExistente);
+    private Lecture buscarEntidade(Long id) {
+        return lectureRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Aula " + id + " não encontrada"));
     }
 }
