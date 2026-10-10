@@ -1,159 +1,121 @@
 package com.classwatch.backend.service;
 
+import com.classwatch.backend.exception.BadRequestException;
+import com.classwatch.backend.exception.ResourceNotFoundException;
 import com.classwatch.backend.model.Lecture;
+import com.classwatch.backend.model.LectureStatus;
 import com.classwatch.backend.repository.LectureRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 
-/*
- * Camada de regra de negócio
- * Responsável por:
- * - salvar lectures
- * - gerenciar upload de áudio
- * - iniciar processamento assíncrono
- */
 @Service
 public class LectureService {
 
+    private static final Set<String> EXTENSOES_PERMITIDAS = Set.of("m4a", "aac", "mp3", "wav");
+
     private final LectureRepository repository;
     private final TranscriptionService transcriptionService;
+    private final Path uploadDirectory;
 
-    /*
-     * Injeção de dependência
-     */
     public LectureService(LectureRepository repository,
-                          TranscriptionService transcriptionService) {
+                          TranscriptionService transcriptionService,
+                          @Value("${classwatch.upload.dir:uploads}") String uploadDirectory) {
         this.repository = repository;
         this.transcriptionService = transcriptionService;
+        this.uploadDirectory = Path.of(uploadDirectory).toAbsolutePath().normalize();
     }
 
-    /*
-     * Cria uma nova lecture (sem upload direto)
-     * Usado quando o frontend já manda um audioPath (caso antigo/teste)
-     */
-    public Lecture salvar(Lecture lecture) {
+    public Lecture salvarComArquivo(MultipartFile file, String titulo, String descricao) {
+        validarDados(file, titulo, descricao);
 
-        // Define status inicial
-        lecture.setStatus("PROCESSANDO");
+        String extensao = obterExtensao(file.getOriginalFilename());
+        String nomeArquivo = UUID.randomUUID() + "." + extensao;
+        Path destino = uploadDirectory.resolve(nomeArquivo).normalize();
 
-        // Salva no banco
+        if (!destino.startsWith(uploadDirectory)) {
+            throw new BadRequestException("Nome de arquivo inválido");
+        }
+
+        try {
+            Files.createDirectories(uploadDirectory);
+            file.transferTo(destino);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Não foi possível armazenar o arquivo de áudio", exception);
+        }
+
+        Lecture lecture = new Lecture();
+        lecture.setTitulo(titulo.trim());
+        lecture.setDescricao(descricao == null ? "" : descricao.trim());
+        lecture.setAudioPath(destino.toString());
+        lecture.setStatus(LectureStatus.PROCESSANDO);
+        lecture.setErroProcessamento(null);
+
         Lecture salva = repository.save(lecture);
-
-        // Dispara processamento em background
-        transcriptionService.processar(salva);
-
-        // Retorna imediatamente (não espera IA)
+        transcriptionService.processar(salva.getId());
         return salva;
     }
 
-    /*
-     * Novo fluxo correto: upload de arquivo real
-     */
-    public Lecture salvarComArquivo(MultipartFile file, String titulo, String descricao) {
-
-        try {
-            /*
-             * 1. Validação básica
-             */
-            if (file.isEmpty()) {
-                throw new RuntimeException("Arquivo vazio");
-            }
-
-            /*
-             * 2. Garante nome seguro
-             */
-            String original = file.getOriginalFilename() != null
-                    ? file.getOriginalFilename()
-                    : "audio.aac";
-
-            String nomeArquivo = UUID.randomUUID() + "_" + original;
-
-            /*
-             * 3. Define pasta de upload (dinâmica)
-             */
-            String pasta = System.getProperty("user.dir") + "/uploads/";
-            File diretorio = new File(pasta);
-
-            if (!diretorio.exists()) {
-                diretorio.mkdirs();
-            }
-
-            /*
-             * 4. Caminho final do arquivo
-             */
-            String caminhoCompleto = pasta + nomeArquivo;
-            File destino = new File(caminhoCompleto);
-
-            /*
-             * 5. Salva arquivo no disco
-             */
-            file.transferTo(destino);
-
-            /*
-             * 6. Cria entidade Lecture
-             */
-            Lecture lecture = new Lecture();
-            lecture.setTitulo(titulo);
-            lecture.setDescricao(descricao);
-            lecture.setAudioPath(destino.getAbsolutePath());
-            lecture.setStatus("PROCESSANDO");
-
-            /*
-             * 7. Salva no banco
-             */
-            Lecture salva = repository.save(lecture);
-
-            /*
-             * 8. Inicia processamento assíncrono
-             */
-            transcriptionService.processar(salva);
-
-            /*
-             * 9. Retorna imediatamente
-             */
-            return salva;
-
-        } catch (IOException e) {
-            e.printStackTrace();
-            throw new RuntimeException("Erro ao salvar arquivo");
-        }
-    }
-
-    /*
-     * Lista todas as lectures
-     */
     public List<Lecture> listar() {
-        return repository.findAll();
+        return repository.findAllByOrderByIdDesc();
     }
 
     public Lecture buscarPorId(Long id) {
-        return repository.findById(id).orElse(null);
+        return repository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Aula não encontrada"));
     }
 
-    /*
-     * Atualiza uma lecture existente
-     */
-    public Lecture atualizar(Long id, Lecture novaLecture) {
-
-        Lecture lectureExistente = repository.findById(id).orElse(null);
-
-        // Se não existir, retorna null (pode melhorar depois com exception)
-        if (lectureExistente == null) {
-            return null;
+    private void validarDados(MultipartFile file, String titulo, String descricao) {
+        if (file == null || file.isEmpty()) {
+            throw new BadRequestException("O arquivo de áudio é obrigatório");
         }
 
-        // Atualiza campos
-        lectureExistente.setTitulo(novaLecture.getTitulo());
-        lectureExistente.setDescricao(novaLecture.getDescricao());
-        lectureExistente.setAudioPath(novaLecture.getAudioPath());
-        lectureExistente.setTranscricao(novaLecture.getTranscricao());
-        lectureExistente.setResumo(novaLecture.getResumo());
+        if (titulo == null || titulo.isBlank()) {
+            throw new BadRequestException("O título da aula é obrigatório");
+        }
 
-        return repository.save(lectureExistente);
+        if (titulo.trim().length() > 150) {
+            throw new BadRequestException("O título deve ter no máximo 150 caracteres");
+        }
+
+        if (descricao != null && descricao.trim().length() > 1000) {
+            throw new BadRequestException("A descrição deve ter no máximo 1000 caracteres");
+        }
+
+        String contentType = file.getContentType();
+        if (contentType != null && !contentType.toLowerCase(Locale.ROOT).startsWith("audio/")) {
+            throw new BadRequestException("Envie um arquivo de áudio válido");
+        }
+
+        obterExtensao(file.getOriginalFilename());
+    }
+
+    private String obterExtensao(String originalFilename) {
+        if (originalFilename == null || originalFilename.isBlank()) {
+            throw new BadRequestException("O arquivo precisa possuir uma extensão de áudio válida");
+        }
+
+        String filename = Path.of(originalFilename).getFileName().toString();
+        int separator = filename.lastIndexOf('.');
+
+        if (separator < 0 || separator == filename.length() - 1) {
+            throw new BadRequestException("O arquivo precisa possuir uma extensão de áudio válida");
+        }
+
+        String extensao = filename.substring(separator + 1).toLowerCase(Locale.ROOT);
+
+        if (!EXTENSOES_PERMITIDAS.contains(extensao)) {
+            throw new BadRequestException("Formato não suportado. Use M4A, AAC, MP3 ou WAV");
+        }
+
+        return extensao;
     }
 }

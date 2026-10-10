@@ -1,272 +1,312 @@
-import { useState, useRef, useEffect } from 'react';
-
+import { useEffect, useRef, useState } from 'react';
 import {
-  View,
+  ActivityIndicator,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  ActivityIndicator,
+  View,
 } from 'react-native';
-
 import { Audio } from 'expo-av';
 import { router } from 'expo-router';
 
-export default function NewLectureScreen() {
-  const API = 'https://carol-snowbound-smite.ngrok-free.dev';
-  //const API = 'http://192.168.100.151:8080';
+import { getLecture, uploadLecture } from '@/services/api';
 
+type ScreenStatus = 'IDLE' | 'GRAVANDO' | 'ENVIANDO' | 'PROCESSANDO' | 'ERRO';
+
+const STATUS_LABEL: Record<Exclude<ScreenStatus, 'IDLE' | 'ERRO'>, string> = {
+  GRAVANDO: 'Gravando aula...',
+  ENVIANDO: 'Enviando áudio...',
+  PROCESSANDO: 'Transcrevendo e organizando a aula...',
+};
+
+export default function NewLectureScreen() {
   const [titulo, setTitulo] = useState('');
   const [descricao, setDescricao] = useState('');
-
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
-
-  const [status, setStatus] = useState('');
-
+  const [status, setStatus] = useState<ScreenStatus>('IDLE');
   const [lectureId, setLectureId] = useState<number | null>(null);
-
+  const [error, setError] = useState<string | null>(null);
   const emRequisicao = useRef(false);
 
-  // -----------------------------
-  // INICIAR GRAVAÇÃO
-  // -----------------------------
+  const busy = status === 'ENVIANDO' || status === 'PROCESSANDO';
+
   async function iniciarGravacao() {
+    if (busy || recording) return;
+
+    if (!titulo.trim()) {
+      setError('Informe um título antes de iniciar a gravação.');
+      return;
+    }
+
+    setError(null);
+
     try {
-      await Audio.requestPermissionsAsync();
+      const permission = await Audio.requestPermissionsAsync();
+
+      if (!permission.granted) {
+        setError('Permissão de microfone negada. Libere o acesso ao microfone para gravar.');
+        return;
+      }
 
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
       });
 
-      const { recording } = await Audio.Recording.createAsync(
+      const result = await Audio.Recording.createAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY,
       );
 
-      setRecording(recording);
-
+      setRecording(result.recording);
       setStatus('GRAVANDO');
     } catch (err) {
-      console.log('Erro gravação:', err);
+      setError(err instanceof Error ? err.message : 'Não foi possível iniciar a gravação.');
+      setStatus('ERRO');
     }
   }
 
-  // -----------------------------
-  // FINALIZAR
-  // -----------------------------
   async function finalizarGravacao() {
+    if (!recording) return;
+
+    setError(null);
+    setStatus('ENVIANDO');
+
     try {
-      if (!recording) return;
-
-      setStatus('ENVIANDO');
-
       await recording.stopAndUnloadAsync();
-
       const uri = recording.getURI();
-
       setRecording(null);
 
-      if (uri) {
-        await enviarAudio(uri);
+      if (!uri) {
+        throw new Error('O aplicativo não conseguiu acessar o áudio gravado.');
       }
+
+      const lecture = await uploadLecture(uri, titulo, descricao);
+      setLectureId(lecture.id);
+      setStatus('PROCESSANDO');
     } catch (err) {
-      console.log('Erro finalizar:', err);
+      setRecording(null);
+      setError(err instanceof Error ? err.message : 'Não foi possível enviar o áudio.');
+      setStatus('ERRO');
     }
   }
 
-  // -----------------------------
-  // UPLOAD
-  // -----------------------------
-  async function enviarAudio(uri: string) {
-    try {
-      const formData = new FormData();
-
-      formData.append('file', {
-        uri,
-        name: 'audio.m4a',
-        type: 'audio/m4a',
-      } as any);
-
-      formData.append('titulo', titulo);
-      formData.append('descricao', descricao);
-
-      const response = await fetch(`${API}/lectures/upload`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      const data = await response.json();
-
-      setLectureId(data.id);
-
-      setStatus(data.status);
-    } catch (err) {
-      console.log('Erro upload:', err);
-    }
-  }
-
-  // -----------------------------
-  // POLLING
-  // -----------------------------
   useEffect(() => {
-    if (!lectureId) return;
+    if (!lectureId || status !== 'PROCESSANDO') return;
 
-    const interval = setInterval(async () => {
-      const finalizado = await buscarStatus(lectureId);
+    const currentLectureId = lectureId;
+    let active = true;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
 
-      if (finalizado) {
-        clearInterval(interval);
+    async function poll() {
+      if (!active || emRequisicao.current) return;
+
+      emRequisicao.current = true;
+
+      try {
+        const lecture = await getLecture(currentLectureId);
+
+        if (!active) return;
+
+        setError(null);
+
+        if (lecture.status === 'FINALIZADO') {
+          router.replace({
+            pathname: '/lecture/[id]',
+            params: { id: currentLectureId.toString() },
+          });
+          return;
+        }
+
+        if (lecture.status === 'ERRO') {
+          setError(
+            lecture.erroProcessamento ||
+              'O processamento da aula falhou. Você pode tentar gravar novamente.',
+          );
+          setStatus('ERRO');
+          return;
+        }
+      } catch (err) {
+        if (active) {
+          setError(
+            err instanceof Error
+              ? `${err.message} O aplicativo continuará tentando.`
+              : 'Falha ao consultar o processamento. O aplicativo continuará tentando.',
+          );
+        }
+      } finally {
+        emRequisicao.current = false;
       }
-    }, 3000);
 
-    return () => clearInterval(interval);
-  }, [lectureId]);
-
-  // -----------------------------
-  // STATUS PROCESSAMENTO
-  // -----------------------------
-  async function buscarStatus(id: number) {
-    if (emRequisicao.current) return false;
-
-    emRequisicao.current = true;
-
-    try {
-      const response = await fetch(`${API}/lectures/${id}`);
-
-      const data = await response.json();
-
-      setStatus(data.status);
-
-      if (data.status === 'FINALIZADO') {
-        router.replace({
-          pathname: '/lecture/[id]',
-          params: {
-            id: id.toString(),
-          },
-        });
-
-        return true;
+      if (active) {
+        timeout = setTimeout(() => void poll(), 3000);
       }
-
-      return false;
-    } catch (err) {
-      console.log('Erro status:', err);
-      return false;
-    } finally {
-      emRequisicao.current = false;
     }
+
+    timeout = setTimeout(() => void poll(), 1000);
+
+    return () => {
+      active = false;
+      if (timeout) clearTimeout(timeout);
+    };
+  }, [lectureId, status]);
+
+  function resetar() {
+    setLectureId(null);
+    setStatus('IDLE');
+    setError(null);
   }
 
-  // -----------------------------
-  // UI
-  // -----------------------------
   return (
-    <View
-      style={{
-        flex: 1,
-        backgroundColor: '#121212',
-        padding: 20,
-      }}
-    >
-      <Text
-        style={{
-          color: '#fff',
-          fontSize: 28,
-          fontWeight: 'bold',
-          marginBottom: 20,
-        }}
-      >
-        Nova Aula
+    <View style={styles.container}>
+      <Text style={styles.title}>Nova aula</Text>
+      <Text style={styles.subtitle}>
+        Dê um nome para a aula, grave o conteúdo e aguarde o processamento automático.
       </Text>
 
-      {/* TÍTULO */}
       <TextInput
         placeholder="Título da aula"
-        placeholderTextColor="#777"
+        placeholderTextColor="#737373"
         value={titulo}
         onChangeText={setTitulo}
-        style={{
-          backgroundColor: '#1e1e1e',
-          color: '#fff',
-          padding: 15,
-          borderRadius: 10,
-          marginBottom: 15,
-        }}
+        editable={!busy && status !== 'GRAVANDO'}
+        maxLength={150}
+        style={styles.input}
       />
 
-      {/* DESCRIÇÃO */}
       <TextInput
-        placeholder="Descrição"
-        placeholderTextColor="#777"
+        placeholder="Descrição (opcional)"
+        placeholderTextColor="#737373"
         value={descricao}
         onChangeText={setDescricao}
+        editable={!busy && status !== 'GRAVANDO'}
+        maxLength={1000}
         multiline
-        style={{
-          backgroundColor: '#1e1e1e',
-          color: '#fff',
-          padding: 15,
-          borderRadius: 10,
-          height: 100,
-          marginBottom: 20,
-          textAlignVertical: 'top',
-        }}
+        style={[styles.input, styles.descriptionInput]}
       />
 
-      {/* STATUS */}
-      {status !== '' && (
-        <Text
-          style={{
-            color: '#aaa',
-            marginBottom: 20,
-          }}
-        >
-          Status: {status}
-        </Text>
-      )}
+      {status !== 'IDLE' && status !== 'ERRO' ? (
+        <View style={styles.statusBox}>
+          {busy ? <ActivityIndicator /> : <View style={styles.recordingDot} />}
+          <Text style={styles.statusText}>{STATUS_LABEL[status]}</Text>
+        </View>
+      ) : null}
 
-      {status === 'PROCESSANDO' && <ActivityIndicator />}
+      {error ? (
+        <View style={styles.errorBox}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      ) : null}
 
-      {/* BOTÕES */}
-      {!recording ? (
+      {status === 'IDLE' ? (
         <TouchableOpacity
-          onPress={iniciarGravacao}
-          style={{
-            backgroundColor: '#2563eb',
-            padding: 18,
-            borderRadius: 12,
-            alignItems: 'center',
-          }}
+          activeOpacity={0.8}
+          onPress={() => void iniciarGravacao()}
+          style={styles.primaryButton}
         >
-          <Text
-            style={{
-              color: '#fff',
-              fontWeight: 'bold',
-              fontSize: 18,
-            }}
-          >
-            Iniciar Gravação
-          </Text>
+          <Text style={styles.buttonText}>Iniciar gravação</Text>
         </TouchableOpacity>
-      ) : (
+      ) : null}
+
+      {status === 'GRAVANDO' ? (
         <TouchableOpacity
-          onPress={finalizarGravacao}
-          style={{
-            backgroundColor: '#dc2626',
-            padding: 18,
-            borderRadius: 12,
-            alignItems: 'center',
-          }}
+          activeOpacity={0.8}
+          onPress={() => void finalizarGravacao()}
+          style={styles.stopButton}
         >
-          <Text
-            style={{
-              color: '#fff',
-              fontWeight: 'bold',
-              fontSize: 18,
-            }}
-          >
-            Finalizar Gravação
-          </Text>
+          <Text style={styles.buttonText}>Finalizar gravação</Text>
         </TouchableOpacity>
-      )}
+      ) : null}
+
+      {status === 'ERRO' ? (
+        <TouchableOpacity activeOpacity={0.8} onPress={resetar} style={styles.secondaryButton}>
+          <Text style={styles.buttonText}>Tentar novamente</Text>
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#121212',
+    padding: 20,
+  },
+  title: {
+    color: '#ffffff',
+    fontSize: 30,
+    fontWeight: '800',
+    marginBottom: 8,
+  },
+  subtitle: {
+    color: '#a3a3a3',
+    lineHeight: 21,
+    marginBottom: 24,
+  },
+  input: {
+    backgroundColor: '#1e1e1e',
+    color: '#ffffff',
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    borderRadius: 12,
+    marginBottom: 14,
+  },
+  descriptionInput: {
+    minHeight: 100,
+    textAlignVertical: 'top',
+  },
+  statusBox: {
+    minHeight: 56,
+    backgroundColor: '#1e1e1e',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 14,
+  },
+  statusText: {
+    color: '#d4d4d4',
+    flex: 1,
+  },
+  recordingDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#ef4444',
+  },
+  errorBox: {
+    backgroundColor: '#2a1717',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 14,
+  },
+  errorText: {
+    color: '#fecaca',
+    lineHeight: 20,
+  },
+  primaryButton: {
+    backgroundColor: '#2563eb',
+    padding: 18,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  stopButton: {
+    backgroundColor: '#dc2626',
+    padding: 18,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  secondaryButton: {
+    backgroundColor: '#262626',
+    padding: 18,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  buttonText: {
+    color: '#ffffff',
+    fontWeight: '700',
+    fontSize: 17,
+  },
+});

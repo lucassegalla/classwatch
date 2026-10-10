@@ -6,31 +6,44 @@ target/
 __pycache__/
 *.pyc
 *.pyo
+.venv/
+venv/
+
+# Node / Expo
+node_modules/
+.expo/
+dist/
+web-build/
+*.tsbuildinfo
 
 # IDE
 .vscode/
 .idea/
+*.iml
 
 # Logs
 *.log
 
-# Áudios e dados
+# Áudios e dados gerados
 data/audio/*
 !data/audio/.gitkeep
 
 data/transcricao/*
 !data/transcricao/.gitkeep
-!data/transcricao/*.txt
+
+backend/classwatch-backend/uploads/*
+!backend/classwatch-backend/uploads/.gitkeep
 
 *.aac
+*.m4a
 *.mp3
 *.wav
 
-# Config sensível
+# Configuração local e secrets
 .env
 .env.*
+!.env.example
 
-# Secrets
 *.key
 *.pem
 *.p12

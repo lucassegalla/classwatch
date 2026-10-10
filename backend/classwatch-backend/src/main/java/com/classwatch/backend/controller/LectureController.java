@@ -1,76 +1,43 @@
 package com.classwatch.backend.controller;
 
-import com.classwatch.backend.model.Lecture;
+import com.classwatch.backend.dto.LectureResponse;
 import com.classwatch.backend.service.LectureService;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+
 import java.util.List;
 
 @RestController
-
 @RequestMapping("/lectures")
 public class LectureController {
 
-    /*
-     * Service responsável pela lógica de negócio
-     * Controller só recebe e responde HTTP
-     */
     private final LectureService service;
 
-    /*
-     * Injeção de dependência (Spring cria o service automaticamente)
-     */
     public LectureController(LectureService service) {
         this.service = service;
     }
 
-    /*
-     * POST /lectures
-     * Cria uma nova aula
-     */
-    @PostMapping
-    public Lecture criar(@RequestBody Lecture lecture) {
-
-        /*
-         * @RequestBody
-         * Converte o JSON enviado no Postman em objeto Java
-         */
-        return service.salvar(lecture);
-    }
-
-    @PostMapping("/upload")
-    public Lecture upload(
+    @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<LectureResponse> upload(
             @RequestParam("file") MultipartFile file,
             @RequestParam("titulo") String titulo,
-            @RequestParam("descricao") String descricao
-    )  {
-        return service.salvarComArquivo(file, titulo, descricao);
-    }
-
-    /*
-     * GET /lectures
-     * Retorna todas as aulas do banco
-     */
-    @GetMapping
-    public List<Lecture> listar() {
-        return service.listar();
-    }
-
-    /*
-     * PUT /lectures/{id}
-     * Atualiza uma aula existente
-     */
-    @PutMapping("/{id}")
-    public Lecture atualizar(
-            @PathVariable Long id,        // pega o ID da URL
-            @RequestBody Lecture lecture  // pega o corpo JSON
+            @RequestParam(value = "descricao", defaultValue = "") String descricao
     ) {
-        return service.atualizar(id, lecture);
+        return ResponseEntity.accepted()
+                .body(LectureResponse.from(service.salvarComArquivo(file, titulo, descricao)));
+    }
+
+    @GetMapping
+    public List<LectureResponse> listar() {
+        return service.listar().stream()
+                .map(LectureResponse::from)
+                .toList();
     }
 
     @GetMapping("/{id}")
-    public Lecture buscarPorId(@PathVariable Long id) {
-        return service.buscarPorId(id);
+    public LectureResponse buscarPorId(@PathVariable Long id) {
+        return LectureResponse.from(service.buscarPorId(id));
     }
-
 }
