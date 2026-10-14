@@ -1,8 +1,8 @@
 # ClassWatch
 
-Sistema acadêmico desenvolvido com React Native, Spring Boot, PostgreSQL, Python, Whisper e OpenAI para transformar aulas gravadas em transcrições revisadas e resumos organizados para estudo
+Sistema desenvolvido com React Native, Spring Boot, PostgreSQL, Python e Inteligência Artificial para transformar gravações de aulas em transcrições revisadas e resumos organizados para estudo.
 
-O projeto integra aplicação mobile, API REST, banco de dados e processamento de Inteligência Artificial em um único fluxo, desde a gravação da aula até a exibição do material processado
+O projeto integra aplicativo mobile, API, banco de dados e processamento de áudio em um único fluxo, desde a gravação até a consulta do material pelo estudante.
 
 ## Sumário
 
@@ -15,171 +15,159 @@ O projeto integra aplicação mobile, API REST, banco de dados e processamento d
 - [Como executar](#como-executar)
 - [Processamento de IA](#processamento-de-ia)
 - [Comunicação remota](#comunicação-remota)
-- [Tratamento de erros](#tratamento-de-erros)
-- [Testes e validação](#testes-e-validação)
 - [Endpoints](#endpoints)
+- [Testes](#testes)
 - [Roadmap](#roadmap)
 - [Autor](#autor)
 
 ## Objetivo
 
-O ClassWatch foi criado como um projeto acadêmico para estudar a integração entre desenvolvimento mobile, backend, banco de dados, processamento de áudio e Inteligência Artificial, a aplicação permite gravar uma aula pelo celular, enviar o áudio para uma API Spring Boot, transcrever o conteúdo localmente com Whisper, organizar a transcrição utilizando a OpenAI e armazenar o resultado no PostgreSQL para consulta posterior
+O ClassWatch nasceu como um projeto acadêmico e evoluiu para uma aplicação voltada à organização e revisão de conteúdos de aulas. A proposta é permitir que o usuário grave uma aula pelo celular, gere uma transcrição revisada e obtenha um resumo organizado por meio de Inteligência Artificial.
 
-A proposta é transformar uma gravação de aula em um material de revisão acessível dentro do próprio aplicativo, mantendo o conteúdo original como referência e evitando que a IA complete trechos sem contexto por suposição
+O material processado fica armazenado no banco de dados e pode ser consultado posteriormente pelo aplicativo. Dessa forma, o ClassWatch busca simplificar a revisão de conteúdos e reduzir o trabalho manual de organizar anotações.
 
 ## Demonstração
 
-O fluxo principal da aplicação funciona da seguinte forma:
+O funcionamento da aplicação pode ser resumido nas seguintes etapas:
 
 ```text
-Gravação da aula
-      ↓
-Aplicação React Native
-      ↓
-Upload do áudio
-      ↓
-Spring Boot API
-      ↓
-PostgreSQL salva a aula como PROCESSANDO
-      ↓
-Fila de processamento
-      ↓
-Python + Whisper
-      ↓
-Transcrição bruta
-      ↓
-OpenAI
-      ↓
-Transcrição revisada + resumo
-      ↓
-PostgreSQL
-      ↓
-Aplicativo acompanha o status
-      ↓
-Resultado da aula
+Gravação da aula pelo celular
+          ↓
+Aplicativo React Native
+          ↓
+Envio do áudio para a API
+          ↓
+Backend Spring Boot
+          ↓
+Salvamento da aula no PostgreSQL
+          ↓
+Processamento com Python e Whisper
+          ↓
+Revisão do texto e geração do resumo
+          ↓
+OpenAI API
+          ↓
+Salvamento do resultado
+          ↓
+Exibição no aplicativo
 ```
 
-Quando o processamento é concluído a tela é aberta automaticamente com o resumo e a transcrição, se ocorrer uma falha o backend registra o estado `ERRO` e o aplicativo interrompe o polling e apresenta a mensagem correspondente
+Durante o processamento, o aplicativo acompanha o status da aula. Quando o processamento termina, o usuário pode consultar o resumo e a transcrição na tela de resultado.
 
 ## Tecnologias utilizadas
 
 ### Mobile
 
-- **React Native** - Construção da aplicação mobile
-- **Expo** - Ambiente de desenvolvimento e execução
-- **TypeScript** - Tipagem e desenvolvimento das telas
-- **Expo Router** - Navegação da aplicação
-- **Expo AV** - Gravação do áudio durante a fase acadêmica atual
+- **React Native:** desenvolvimento da aplicação para dispositivos móveis.
+- **Expo:** ferramentas para executar e desenvolver o aplicativo.
+- **TypeScript:** tipagem do código e definição dos dados utilizados pela aplicação.
+- **Expo Router:** organização da navegação entre as telas.
+- **Expo AV:** gravação de áudio na implementação atual.
 
 ### Backend
 
-- **Java 17** - Linguagem utilizada pela API
-- **Spring Boot** - Framework principal do backend
-- **Spring Web** - Endpoints REST e upload multipart
-- **Spring Data JPA** - Persistência das aulas
-- **Maven** - Gerenciamento de dependências e build
+- **Java:** linguagem utilizada no backend.
+- **Spring Boot:** framework responsável pela API e pela integração entre os componentes.
+- **Spring Web:** criação dos endpoints HTTP e recebimento dos arquivos de áudio.
+- **Spring Data JPA:** comunicação entre a aplicação e o banco de dados.
+- **Maven:** gerenciamento das dependências e execução dos comandos de build e teste.
 
 ### Banco de dados
 
-- **PostgreSQL** - Persistência das aulas, transcrições, resumos, status e informações de processamento
+- **PostgreSQL:** armazenamento das aulas, transcrições, resumos e estados do processamento.
 
 ### Inteligência Artificial
 
-- **Python** - Execução do pipeline de processamento
-- **OpenAI Whisper** - Transcrição local dos arquivos de áudio
-- **OpenAI API** - Revisão da transcrição e geração dos resumos
-- **gpt-4o-mini** - Modelo textual utilizado por padrão
+- **Python:** execução do processamento de áudio.
+- **OpenAI Whisper:** conversão do áudio em texto.
+- **OpenAI API:** revisão da transcrição e geração do resumo.
+- **GPT-4o mini:** modelo textual utilizado por padrão para organizar o conteúdo.
 
 ### Ferramentas auxiliares
 
-- **FFmpeg** - Decodificação e processamento dos arquivos de áudio utilizados pelo Whisper
-- **ngrok** - Exposição temporária do backend local para testes e apresentações pela internet
-- **Git** - Controle de versão
-- **GitHub** - Hospedagem do repositório
+- **FFmpeg:** suporte à leitura e ao processamento dos arquivos de áudio.
+- **Git:** controle de versão do código.
+- **GitHub:** hospedagem do repositório.
+- **ngrok:** exposição temporária do backend para acesso remoto durante testes.
 
 ## Arquitetura
 
-O sistema separa as responsabilidades entre a aplicação mobile, a API, o processador Python e o banco de dados
+O projeto separa as responsabilidades para facilitar a manutenção e permitir que cada componente execute uma função específica.
 
 ```text
 React Native / Expo
         ↓
 Spring Boot API
         ↓
+Controllers
+        ↓
 LectureService
         ↓
 PostgreSQL
         ↓
-TranscriptionService
-        ↓
-Executor assíncrono
+Processamento assíncrono
         ↓
 Python
-   ├── Whisper
-   └── OpenAI
+  ├── Whisper
+  └── OpenAI
         ↓
 PostgreSQL
         ↓
-React Native / Expo
+Aplicativo mobile
 ```
 
-### Mobile
+### Aplicativo mobile
 
-Responsável pela gravação da aula, upload do arquivo, acompanhamento do processamento, histórico e visualização do resultado
-
-A URL da API fica centralizada através da variável `EXPO_PUBLIC_API_URL`, evitando URLs de ngrok espalhadas pelas telas
+É a interface utilizada pelo usuário. Permite gravar aulas, enviar os arquivos, acompanhar o processamento, consultar o histórico e visualizar os resultados.
 
 ### Controllers
 
-Recebem as requisições HTTP, encaminham o upload para o service e retornam DTOs que expõem apenas os dados necessários ao aplicativo
-
-O caminho interno do arquivo de áudio não é enviado ao cliente
+Recebem as requisições do aplicativo e encaminham os dados para os serviços responsáveis pelo processamento. Também definem as respostas enviadas pela API.
 
 ### Services
 
-`LectureService` concentra validação dos dados, armazenamento do áudio e persistência da aula
+Concentram as regras de negócio.
 
-`TranscriptionService` executa o processador Python em background, controla timeout, verifica o código de saída do processo e atualiza a aula como `FINALIZADO` ou `ERRO`
+O `LectureService` é responsável pelas operações relacionadas às aulas, incluindo validação, armazenamento do áudio e persistência dos dados.
+
+O `TranscriptionService` coordena a execução do processamento Python e atualiza o status da aula conforme o resultado.
 
 ### Processamento assíncrono
 
-O projeto utiliza um executor dedicado com apenas um processamento simultâneo, impedindo que várias instâncias pesadas do Whisper sejam carregadas ao mesmo tempo no computador durante a apresentação
+O processamento do áudio acontece em segundo plano, permitindo que a requisição de envio termine sem precisar aguardar toda a transcrição.
 
-Aulas que permanecerem com status `PROCESSANDO` após uma interrupção do backend são recolocadas na fila quando a aplicação inicia novamente
+Uma fila controla a execução dos trabalhos para evitar que vários processamentos pesados do Whisper sejam executados simultaneamente.
+
+### Python e Inteligência Artificial
+
+O script Python utiliza o Whisper para gerar a transcrição inicial e a OpenAI para revisar o texto e organizar o resumo.
+
+O resultado é devolvido ao backend, que salva as informações no PostgreSQL.
 
 ### Repositories
 
-Concentram a comunicação com o PostgreSQL através do Spring Data JPA
-
-O histórico é retornado da aula mais recente para a mais antiga
-
-### Python
-
-O processador Python valida o arquivo e a chave da OpenAI, executa o Whisper, revisa o texto e gera o resumo
-
-O resultado enviado de volta ao Java utiliza campos codificados em Base64 para impedir que quebras de linha ou conteúdo da transcrição interfiram no protocolo entre os dois processos
+Utilizam o Spring Data JPA para realizar as operações de consulta e persistência no banco de dados.
 
 ## Estrutura do projeto
 
 ```text
-.
+classwatch/
 ├── ai/
-│   ├── requirements.txt              # Dependências do processamento Python
-│   └── transcricao.py                # Whisper + OpenAI
+│   ├── requirements.txt
+│   └── transcricao.py
 ├── backend/
 │   └── classwatch-backend/
 │       ├── src/main/java/com/classwatch/backend/
-│       │   ├── config/               # Executor do processamento assíncrono
-│       │   ├── controller/           # Endpoints REST
-│       │   ├── dto/                  # Respostas públicas da API
-│       │   ├── exception/            # Tratamento centralizado de erros
-│       │   ├── model/                # Entidade e status das aulas
-│       │   ├── repository/           # Persistência PostgreSQL
-│       │   └── service/              # Regras de negócio e processamento
+│       │   ├── config/
+│       │   ├── controller/
+│       │   ├── dto/
+│       │   ├── exception/
+│       │   ├── model/
+│       │   ├── repository/
+│       │   └── service/
 │       ├── src/main/resources/
-│       │   └── application.properties
-│       ├── uploads/                  # Áudios gerados localmente, ignorados pelo Git
-│       ├── .env.example              # Exemplo das configurações locais
+│       ├── uploads/
+│       ├── .env.example
 │       ├── mvnw
 │       ├── mvnw.cmd
 │       └── pom.xml
@@ -189,124 +177,98 @@ O resultado enviado de volta ao Java utiliza campos codificados em Base64 para i
 ├── mobile/
 │   ├── app/
 │   │   ├── lecture/
-│   │   │   ├── [id].tsx             # Resultado da aula
-│   │   │   └── new.tsx              # Gravação e processamento
 │   │   ├── _layout.tsx
-│   │   ├── history.tsx               # Histórico
-│   │   └── index.tsx                 # Tela inicial
+│   │   ├── history.tsx
+│   │   └── index.tsx
 │   ├── services/
-│   │   └── api.ts                    # Comunicação centralizada com a API
 │   ├── types/
-│   │   └── lecture.ts                # Tipos TypeScript
 │   ├── .env.example
 │   ├── app.json
-│   ├── package.json
-│   └── package-lock.json
+│   └── package.json
 ├── .gitattributes
 ├── .gitignore
 └── README.md
 ```
 
+As pastas principais são:
+
+- `mobile/`: telas, navegação e comunicação com a API.
+- `backend/`: API, regras de negócio e integração com o banco.
+- `ai/`: script Python responsável pela transcrição e pelo resumo.
+- `data/`: diretório destinado a dados utilizados pelo projeto.
+- `uploads/`: arquivos recebidos pelo backend durante a execução.
+
 ## Funcionalidades
 
-### Gravação e upload
+### Gravação e envio
 
-- Gravação de aulas utilizando o microfone do dispositivo
-- Solicitação e tratamento da permissão de microfone
-- Upload multipart do arquivo para o backend
-- Validação de título, descrição e formato do áudio
-- Suporte a arquivos `M4A`, `AAC`, `MP3` e `WAV` no backend
-- Limite de upload de `50 MB`
-- Bloqueio de novas gravações enquanto uma aula está sendo enviada ou processada
+- Gravação de áudio pelo microfone do celular.
+- Solicitação de permissão para utilizar o microfone.
+- Envio do arquivo para o backend.
+- Validação das informações da aula e do arquivo recebido.
 
-### Processamento
+### Processamento de áudio
 
-- Processamento assíncrono para não bloquear a requisição de upload
-- Fila limitada a um processamento de Whisper por vez
-- Timeout configurável do processo Python
-- Verificação do exit code do Python
-- Recuperação de aulas interrompidas após reinicialização do backend
-- Estado `PROCESSANDO`, `FINALIZADO` ou `ERRO`
-- Mensagem de erro armazenada para facilitar diagnóstico
+- Transcrição automática com Whisper.
+- Revisão do texto utilizando Inteligência Artificial.
+- Geração de resumos organizados em tópicos.
+- Processamento em segundo plano.
+- Acompanhamento do estado de processamento.
 
-### Inteligência Artificial
+### Histórico de aulas
 
-- Transcrição automática utilizando Whisper
-- Limpeza da transcrição antes do envio para o modelo textual
-- Correção de ortografia, pontuação e concordância
-- Organização de frases quebradas apenas quando houver contexto suficiente
-- Proibição explícita de inventar conteúdo ausente
-- Uso de `[trecho inaudível]` quando não houver segurança para reconstruir uma passagem
-- Resumo automático em tópicos
+- Listagem das aulas cadastradas.
+- Ordenação da mais recente para a mais antiga.
+- Consulta do status de cada aula.
+- Acesso à transcrição e ao resumo das aulas processadas.
 
-### Histórico
+### Tratamento de erros
 
-- Listagem das aulas da mais recente para a mais antiga
-- Atualização automática ao abrir novamente a tela
-- Atualização manual por gesto de refresh
-- Exibição do estado de cada aula
-- Data e hora de criação para novas aulas
-- Tratamento de lista vazia e falha de comunicação
+- Validação dos dados enviados.
+- Registro do estado de erro quando o processamento falha.
+- Verificação do resultado da execução do script Python.
+- Interrupção do acompanhamento quando o processamento termina.
+- Mensagens de erro para situações que impedem a conclusão da tarefa.
 
-### Interface mobile
+### Configuração e segurança
 
-- Tela inicial própria do ClassWatch
-- Fluxo de gravação com estados visuais
-- Mensagens de erro visíveis ao usuário
-- Polling interrompido corretamente em sucesso ou erro
-- Redirecionamento automático para o resultado quando a aula é finalizada
-- Tela de resultado com resumo e transcrição
-- Remoção das telas e componentes de exemplo do template padrão do Expo
-
-### Segurança e configuração
-
-- Senha do PostgreSQL e chave da OpenAI fora do código-fonte
-- Caminho do Python configurável por ambiente
-- Descoberta automática do `ai/transcricao.py` nas estruturas comuns do projeto
-- Uploads e arquivos de áudio ignorados pelo Git
-- DTOs impedem que caminhos internos do servidor sejam expostos pela API
-- Tratamento centralizado das respostas de erro
+- Configurações do ambiente separadas do código-fonte.
+- Chave da OpenAI e credenciais do banco configuradas localmente.
+- Arquivos de áudio enviados ignorados pelo Git.
+- Caminho interno dos arquivos de áudio mantido no backend.
 
 ## Como executar
 
-O ambiente local precisa de Java, PostgreSQL, Python, Node.js e FFmpeg instalados
+Para executar o projeto localmente, é necessário ter Java, PostgreSQL, Python, Node.js e FFmpeg instalados.
 
 ### 1. Clonar o repositório
 
 ```bash
-git clone <URL_DO_REPOSITORIO>
+git clone https://github.com/lucassegalla/classwatch.git
 cd classwatch
 ```
 
-### 2. Criar o banco PostgreSQL
+### 2. Criar o banco de dados
 
-Crie um banco chamado:
+Crie um banco PostgreSQL chamado `classwatch`.
 
-```text
-classwatch
-```
-
-O banco pode ser criado pelo pgAdmin ou através do `psql`:
+É possível fazer isso pelo pgAdmin ou pelo terminal:
 
 ```sql
 CREATE DATABASE classwatch;
 ```
 
-O Hibernate cria e atualiza as tabelas utilizadas pelo projeto durante esta fase acadêmica através de:
-
-```properties
-spring.jpa.hibernate.ddl-auto=update
-```
+Na configuração atual, o Hibernate gerencia a estrutura das tabelas conforme as entidades da aplicação.
 
 ### 3. Configurar o backend
 
-Entre na pasta:
+Entre na pasta do backend:
 
 ```bash
 cd backend/classwatch-backend
 ```
 
-Crie o arquivo local de configuração a partir do exemplo
+Crie o arquivo local de configuração a partir do exemplo.
 
 No Windows:
 
@@ -314,13 +276,13 @@ No Windows:
 copy .env.example .env
 ```
 
-No Linux/macOS:
+No Linux ou macOS:
 
 ```bash
 cp .env.example .env
 ```
 
-Edite `.env`:
+Edite o arquivo `.env` com as informações do seu ambiente:
 
 ```env
 DB_URL=jdbc:postgresql://localhost:5432/classwatch
@@ -330,7 +292,7 @@ DB_PASSWORD=sua_senha
 OPENAI_API_KEY=sua_chave_openai
 ```
 
-Também podem ser configurados opcionalmente:
+Outras configurações disponíveis incluem:
 
 ```env
 PYTHON_PATH=python
@@ -342,33 +304,27 @@ UPLOADS_DIR=uploads
 PORT=8080
 ```
 
-O arquivo `.env` é ignorado pelo Git
+Utilize o caminho real do projeto caso precise configurar `AI_SCRIPT_PATH`. A variável `OPENAI_API_KEY` deve conter sua própria chave e nunca deve ser publicada no GitHub.
 
-### 4. Configurar Python
+### 4. Instalar as dependências Python
 
-Volte para a raiz do projeto e instale as dependências:
+Volte para a raiz do projeto e execute:
 
 ```bash
 python -m pip install -r ai/requirements.txt
 ```
 
-O FFmpeg também precisa estar disponível no `PATH` do sistema
+O FFmpeg também precisa estar instalado e disponível no `PATH` do sistema.
 
-Para verificar:
+Para verificar a instalação:
 
 ```bash
 ffmpeg -version
 ```
 
-E:
-
-```bash
-python --version
-```
-
 ### 5. Iniciar o backend
 
-Entre novamente em:
+Entre novamente na pasta:
 
 ```bash
 cd backend/classwatch-backend
@@ -380,25 +336,25 @@ No Windows:
 mvnw.cmd spring-boot:run
 ```
 
-No Linux/macOS:
+No Linux ou macOS:
 
 ```bash
 ./mvnw spring-boot:run
 ```
 
-Por padrão a API ficará disponível em:
+A API ficará disponível, por padrão, em:
 
 ```text
 http://localhost:8080
 ```
 
-O endpoint de saúde pode ser testado em:
+Para verificar se o backend está em execução, acesse:
 
 ```text
 http://localhost:8080/health
 ```
 
-Resposta esperada:
+A resposta esperada é:
 
 ```json
 {
@@ -406,9 +362,11 @@ Resposta esperada:
 }
 ```
 
+Mantenha o terminal do backend aberto enquanto estiver utilizando o aplicativo.
+
 ### 6. Configurar o aplicativo mobile
 
-Em outro terminal entre em:
+Abra outro terminal e entre na pasta:
 
 ```bash
 cd mobile
@@ -420,7 +378,7 @@ Instale as dependências:
 npm ci
 ```
 
-Crie o arquivo de configuração local
+Crie o arquivo de configuração local.
 
 No Windows:
 
@@ -428,130 +386,96 @@ No Windows:
 copy .env.example .env
 ```
 
-No Linux/macOS:
+No Linux ou macOS:
 
 ```bash
 cp .env.example .env
 ```
 
-Configure `EXPO_PUBLIC_API_URL` com a URL utilizada pelo celular:
+Edite `mobile/.env` e configure o endereço do backend:
 
 ```env
 EXPO_PUBLIC_API_URL=http://192.168.0.100:8080
 ```
 
-O endereço deve apontar para o computador que está executando o Spring Boot
+Substitua `192.168.0.100` pelo endereço IPv4 do computador que executa o backend.
 
-Depois inicie o Expo:
+Quando o aplicativo estiver sendo executado em um celular físico, o endereço precisa ser acessível pela rede do dispositivo. O uso de `localhost` no celular aponta para o próprio celular, não para o computador.
+
+Inicie o Expo:
 
 ```bash
 npx expo start
 ```
 
+Abra o aplicativo pelo Expo Go ou pelo ambiente de execução utilizado no desenvolvimento.
+
 ## Processamento de IA
 
-Quando um áudio é enviado o backend cria a aula com status:
+Quando uma aula é enviada, o backend salva suas informações e inicia o processamento em segundo plano.
 
-```text
-PROCESSANDO
-```
+O fluxo é:
 
-O `TranscriptionService` adiciona o trabalho a um executor dedicado e inicia o script Python
+1. O Whisper transforma o áudio em uma transcrição inicial.
+2. O texto passa por uma limpeza básica.
+3. A OpenAI revisa a transcrição e gera um resumo.
+4. O backend valida o resultado e salva os dados.
+5. O aplicativo identifica a conclusão e apresenta o material.
 
-```text
-Áudio
-  ↓
-Whisper
-  ↓
-Transcrição bruta
-  ↓
-Limpeza do texto
-  ↓
-OpenAI
-  ↓
-Transcrição revisada
-  +
-Resumo em tópicos
-```
+O processador utiliza instruções para preservar o conteúdo original da aula. A IA deve corrigir a escrita e organizar as informações sem acrescentar explicações externas ou inventar trechos que não estejam sustentados pela transcrição.
 
-O prompt utilizado pela IA segue uma regra importante: nenhum conteúdo externo deve ser adicionado para completar partes incompreensíveis da aula
+O processamento possui três estados principais:
 
-Se o processamento terminar corretamente:
-
-```text
-FINALIZADO
-```
-
-Se Python, Whisper, OpenAI ou o arquivo de áudio produzirem uma falha:
-
-```text
-ERRO
-```
-
-O aplicativo identifica os dois estados terminais e encerra o polling corretamente
+- `PROCESSANDO`: a aula ainda está sendo processada.
+- `FINALIZADO`: a transcrição e o resumo foram gerados.
+- `ERRO`: ocorreu uma falha durante o processamento.
 
 ## Comunicação remota
 
-Durante testes e apresentações o ngrok pode ser utilizado para expor temporariamente o backend local
+Durante testes ou quando o celular não está na mesma rede do computador, o ngrok pode ser utilizado para disponibilizar temporariamente o backend pela internet.
 
-Com o backend na porta `8080` execute:
+Com a API executando na porta `8080`, inicie o túnel:
 
 ```bash
 ngrok http 8080
 ```
 
-O ngrok retornará uma URL semelhante a:
+O ngrok fornecerá uma URL HTTPS semelhante a:
 
 ```text
 https://exemplo.ngrok-free.app
 ```
 
-Coloque essa URL em `mobile/.env`:
+Configure essa URL no arquivo `mobile/.env`:
 
 ```env
 EXPO_PUBLIC_API_URL=https://exemplo.ngrok-free.app
 ```
 
-Depois reinicie o Expo para que a variável seja carregada novamente
+Reinicie o Expo para carregar a nova configuração.
 
-```text
-Celular
-   ↓
-Internet
-   ↓
-ngrok
-   ↓
-Spring Boot
-   ↓
-Python / IA
-   ↓
-PostgreSQL
-```
+O túnel permite que o celular acesse o backend sem precisar estar na mesma rede local. A disponibilidade do endereço depende da sessão e das condições do serviço ngrok.
 
-A camada de API do aplicativo envia também o header utilizado para evitar a página intermediária do ngrok em requisições da aplicação
+## Endpoints
 
-## Tratamento de erros
+A API disponibiliza os seguintes endpoints:
 
-O backend possui tratamento centralizado para evitar respostas inconsistentes
+| Método | Endpoint           | Status | Descrição                                 |
+| ------ | ------------------ | ------ | ----------------------------------------- |
+| `GET`  | `/health`          | `200`  | Verifica se a API está em execução.       |
+| `POST` | `/lectures/upload` | `202`  | Recebe uma aula e inicia o processamento. |
+| `GET`  | `/lectures`        | `200`  | Lista as aulas cadastradas.               |
+| `GET`  | `/lectures/{id}`   | `200`  | Consulta uma aula pelo identificador.     |
 
-Exemplos:
+O endpoint de upload retorna uma resposta indicando que a solicitação foi aceita para processamento. O resultado final deve ser consultado posteriormente.
 
-```text
-400 - Dados ou arquivo inválidos
-404 - Aula não encontrada
-413 - Arquivo maior que 50 MB
-500 - Erro interno inesperado
-```
+## Testes
 
-Falhas internas do processador de IA não transformam mais a aula em falso sucesso, o código de saída do Python é verificado e somente respostas estruturadas válidas podem alterar o status para `FINALIZADO`
-
-O conteúdo completo das transcrições também não é escrito nos logs do backend
-
-## Testes e validação
-
-O projeto contém um teste básico do módulo Java e os componentes também podem ser validados separadamente antes da apresentação
+O projeto pode ser validado por componente antes de executar uma demonstração completa.
 
 ### Backend
+
+Na pasta `backend/classwatch-backend`, execute:
 
 No Windows:
 
@@ -559,7 +483,7 @@ No Windows:
 mvnw.cmd test
 ```
 
-No Linux/macOS:
+No Linux ou macOS:
 
 ```bash
 ./mvnw test
@@ -567,11 +491,13 @@ No Linux/macOS:
 
 ### Mobile
 
+Na pasta `mobile`, execute:
+
 ```bash
 npx tsc --noEmit
 ```
 
-E para lint:
+Para executar o lint, caso o script esteja configurado no projeto:
 
 ```bash
 npm run lint
@@ -579,72 +505,47 @@ npm run lint
 
 ### Python
 
+Na raiz do projeto, execute:
+
 ```bash
 python -m py_compile ai/transcricao.py
 ```
 
-Antes da apresentação é recomendado executar o fluxo completo várias vezes utilizando gravações curtas e pelo menos um teste proposital de falha para confirmar o tratamento de erro
-
-## Endpoints
-
-| Método | Endpoint | Status | Descrição |
-| :----- | :------- | :----: | :-------- |
-| `GET` | `/health` | `200` | Verifica se a API está em execução |
-| `POST` | `/lectures/upload` | `202` | Cria a aula, salva o áudio e inicia o processamento |
-| `GET` | `/lectures` | `200` | Lista as aulas da mais recente para a mais antiga |
-| `GET` | `/lectures/{id}` | `200` | Busca uma aula e o estado atual do processamento |
-
-O endpoint antigo que aceitava `audioPath` informado pelo cliente foi removido, o caminho do arquivo agora é definido exclusivamente pelo backend
+Além das verificações individuais, é importante testar o fluxo completo: gravar uma aula, enviar o áudio, aguardar o processamento e consultar o resultado pelo aplicativo.
 
 ## Roadmap
 
 ### Concluído
 
-- [x] Aplicação mobile com React Native, Expo e TypeScript
-- [x] Gravação de aulas pelo microfone
-- [x] Upload de áudio para Spring Boot
-- [x] Persistência com PostgreSQL
-- [x] Transcrição automática com Whisper
-- [x] Integração com OpenAI
-- [x] Geração automática de resumo
-- [x] Histórico de aulas
-- [x] Processamento assíncrono
-- [x] Fila limitada de processamento
-- [x] Timeout e verificação do processo Python
-- [x] Estado de erro persistido no banco
-- [x] Recuperação de processamentos interrompidos
-- [x] Configuração por variáveis de ambiente
-- [x] URL da API centralizada no mobile
-- [x] Tratamento do polling em sucesso e erro
-- [x] Validação básica dos uploads
-- [x] Tratamento centralizado de erros HTTP
-- [x] DTOs para evitar exposição de caminhos internos
-- [x] Limpeza dos arquivos gerados no Git
-- [x] Interface preparada para demonstração
-- [x] Endpoint de health check
+- [x] Aplicativo mobile com React Native e Expo.
+- [x] Gravação de aulas pelo celular.
+- [x] Upload de áudio para o backend.
+- [x] Persistência das aulas no PostgreSQL.
+- [x] Transcrição automática com Whisper.
+- [x] Integração com a OpenAI.
+- [x] Geração automática de resumos.
+- [x] Histórico e consulta das aulas.
+- [x] Processamento assíncrono.
+- [x] Acompanhamento dos estados de processamento.
+- [x] Tratamento básico de erros.
+- [x] Configuração por variáveis de ambiente.
 
 ### Próximos passos
 
-- [ ] Implementar autenticação e autorização de alunos e professores
-- [ ] Relacionar aulas a usuários, disciplinas e turmas
-- [ ] Substituir `ddl-auto=update` por migrations versionadas com Flyway
-- [ ] Criar testes unitários e de integração para o fluxo completo
-- [ ] Migrar o armazenamento local dos áudios para object storage
-- [ ] Evoluir o worker Python para um serviço persistente sem recarregar o Whisper a cada aula
-- [ ] Migrar a gravação de `expo-av` para `expo-audio`
-- [ ] Implementar paginação no histórico para grandes volumes de aulas
-- [ ] Adicionar busca e filtros de aulas
-- [ ] Gerar flashcards, quizzes e perguntas de revisão
-- [ ] Criar uma plataforma web integrada
-- [ ] Containerizar os componentes com Docker
-- [ ] Criar pipeline de CI/CD
-- [ ] Publicar oficialmente a aplicação
+- [ ] Implementar autenticação de usuários.
+- [ ] Relacionar aulas a usuários, disciplinas e turmas.
+- [ ] Criar testes automatizados para o fluxo completo.
+- [ ] Adicionar busca, filtros e paginação ao histórico.
+- [ ] Gerar flashcards e questões de revisão.
+- [ ] Evoluir o processamento para lidar com volumes maiores de áudio.
+- [ ] Implementar migrations versionadas para o banco de dados.
+- [ ] Containerizar a aplicação com Docker.
+- [ ] Criar pipeline de integração e entrega contínuas.
+- [ ] Publicar oficialmente a aplicação.
 
 ## Autor
 
-Desenvolvido por **Lucas Wallace Segalla**
+Desenvolvido por **Lucas Wallace Segalla**.
 
 - GitHub: https://github.com/lucassegalla
 - LinkedIn: https://linkedin.com/in/lucassegalla
-
-Projeto acadêmico desenvolvido para estudos e apresentação universitária

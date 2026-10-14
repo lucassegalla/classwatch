@@ -8,6 +8,8 @@ import com.classwatch.backend.repository.LectureRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.domain.Sort;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -64,8 +66,11 @@ public class LectureService {
         return salva;
     }
 
+    @Transactional(readOnly = true)
     public List<Lecture> listar() {
-        return repository.findAllByOrderByIdDesc();
+        return repository.findAll(
+                Sort.by(Sort.Direction.DESC, "id")
+        );
     }
 
     public Lecture buscarPorId(Long id) {
