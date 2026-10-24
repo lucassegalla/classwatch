@@ -45,7 +45,9 @@ public class LectureController {
 
     @GetMapping("/{id}")
     public LectureDetailResponse buscarPorId(@PathVariable Long id, @AuthenticationPrincipal Jwt jwt) {
-        return LectureDetailResponse.from(service.buscarPorId(id, currentUserService.from(jwt)));
+        var user = currentUserService.from(jwt);
+        var lecture = service.buscarPorId(id, user);
+        return LectureDetailResponse.from(lecture, service.canManage(lecture, user));
     }
 
     @DeleteMapping("/{id}")

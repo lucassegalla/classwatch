@@ -7,10 +7,12 @@ import com.classwatch.backend.model.Lecture;
 import com.classwatch.backend.model.LectureStatus;
 import com.classwatch.backend.model.AppUser;
 import com.classwatch.backend.model.UserRole;
+import com.classwatch.backend.model.Subject;
 import com.classwatch.backend.repository.LectureRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
@@ -38,13 +40,21 @@ public class LectureService {
     private final LectureRepository repository;
     private final TranscriptionService transcriptionService;
     private final Path uploadDirectory;
+    private final SubjectService subjectService;
 
+    @Autowired
     public LectureService(LectureRepository repository,
                           TranscriptionService transcriptionService,
-                          @Value("${classwatch.upload.dir:uploads}") String uploadDirectory) {
+                          @Value("${classwatch.upload.dir:uploads}") String uploadDirectory,
+                          SubjectService subjectService) {
         this.repository = repository;
         this.transcriptionService = transcriptionService;
         this.uploadDirectory = Path.of(uploadDirectory).toAbsolutePath().normalize();
+        this.subjectService = subjectService;
+    }
+
+    public LectureService(LectureRepository repository, TranscriptionService transcriptionService, String uploadDirectory) {
+        this(repository, transcriptionService, uploadDirectory, null);
     }
 
     public Lecture salvarComArquivo(MultipartFile file, String titulo, String descricao) {
@@ -56,7 +66,17 @@ public class LectureService {
     }
 
     public Lecture salvarComArquivo(MultipartFile file, String titulo, String descricao, String requestId, AppUser owner) {
+        return salvarComArquivo(file, titulo, descricao, requestId, owner, null);
+    }
+
+    public Lecture salvarComArquivo(MultipartFile file, String titulo, String descricao, String requestId, AppUser owner, Long subjectId) {
         validarDados(file, titulo, descricao);
+        Subject subject = null;
+        if (subjectId != null) {
+            if (subjectService == null) throw new IllegalStateException("Serviço de matérias indisponível");
+            subject = subjectService.requireProfessorOwned(subjectId, owner);
+            if (!subject.isAtiva()) throw new BadRequestException("Não é possível adicionar aulas a uma matéria arquivada");
+        }
         if (requestId != null && !requestId.isBlank()) {
             if (requestId.length() > 64 || !requestId.matches("[A-Za-z0-9-]+")) {
                 throw new BadRequestException("Identificador de envio inválido");
@@ -88,6 +108,7 @@ public class LectureService {
         lecture.setAudioPath(destino.toString());
         lecture.setRequestId(requestId);
         lecture.setOwner(owner);
+        lecture.setSubject(subject);
         lecture.setStatus(LectureStatus.PROCESSANDO);
         lecture.setErroProcessamento(null);
 
@@ -136,7 +157,9 @@ public class LectureService {
 
     @Transactional
     public Lecture retry(Long id, AppUser user) {
-        return retryLecture(buscarPorId(id, user));
+        Lecture lecture = buscarPorId(id, user);
+        requireOwnerForMutation(lecture, user);
+        return retryLecture(lecture);
     }
 
     private Lecture retryLecture(Lecture lecture) {
@@ -196,7 +219,19 @@ public class LectureService {
 
     @Transactional
     public void excluir(Long id, AppUser user) {
-        excluirLecture(buscarPorId(id, user));
+        Lecture lecture = buscarPorId(id, user);
+        requireOwnerForMutation(lecture, user);
+        excluirLecture(lecture);
+    }
+
+    public boolean canManage(Lecture lecture, AppUser user) {
+        return lecture.getOwner() != null
+                ? lecture.getOwner().getId().equals(user.getId())
+                : user.getRole() == UserRole.PROFESSOR;
+    }
+
+    private void requireOwnerForMutation(Lecture lecture, AppUser user) {
+        if (!canManage(lecture, user)) throw new ResourceNotFoundException("Aula não encontrada");
     }
 
     private void excluirLecture(Lecture lecture) {

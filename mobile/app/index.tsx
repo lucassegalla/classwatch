@@ -29,6 +29,11 @@ export default function HomeScreen() {
         <Text style={styles.cta}>Começar gravação  →</Text>
       </TouchableOpacity>
 
+      <TouchableOpacity accessibilityRole="button" onPress={() => router.push('/subjects' as never)} style={[styles.subjectButton, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Text style={[styles.subjectButtonTitle, { color: colors.text }]}>Minhas matérias</Text>
+        <Text style={[styles.subjectButtonAction, { color: colors.primary }]}>Ver matérias  →</Text>
+      </TouchableOpacity>
+
       <View style={styles.sectionHeader}><Text style={[styles.sectionTitle, { color: colors.text }]}>Aulas recentes</Text><TouchableOpacity onPress={() => router.push('/history')}><Text style={[styles.seeAll, { color: colors.primary }]}>Ver histórico</Text></TouchableOpacity></View>
       {loading ? <ActivityIndicator color="#315ce7" style={styles.loader} /> : error ? <View style={styles.empty}><Text style={styles.emptyText}>{error}</Text><TouchableOpacity onPress={() => router.push('/history')}><Text style={styles.seeAll}>Abrir histórico</Text></TouchableOpacity></View> : recent.length === 0 ? (
         <View style={[styles.empty, { backgroundColor: colors.surface, borderColor: colors.border }]}><Text style={[styles.emptyTitle, { color: colors.text }]}>Nenhuma aula ainda</Text></View>
@@ -50,6 +55,9 @@ const styles = StyleSheet.create({
   brand: { fontSize: 36, lineHeight: 42, fontWeight: '800' },
   settingsButton: { width: 44, height: 44, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   primaryCard: { backgroundColor: '#315ce7', padding: 22, borderRadius: 20, marginBottom: 30, shadowColor: '#315ce7', shadowOpacity: 0.18, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 4 },
+  subjectButton: { padding: 18, borderWidth: 1, borderRadius: 16, marginBottom: 26, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  subjectButtonTitle: { fontWeight: '700', fontSize: 16 },
+  subjectButtonAction: { fontWeight: '700', fontSize: 13 },
   iconCircle: { width: 42, height: 42, borderRadius: 14, backgroundColor: '#ffffff33', alignItems: 'center', justifyContent: 'center', marginBottom: 18 },
   icon: { color: '#ffffff', fontSize: 27, lineHeight: 30 },
   cardTitle: { color: '#ffffff', fontSize: 22, fontWeight: '700' },

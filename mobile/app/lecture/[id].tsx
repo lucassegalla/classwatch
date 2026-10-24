@@ -74,8 +74,10 @@ export default function LectureDetails() {
       && Number(lecture.transcricao.trim()) > 0 && Number(lecture.transcricao.trim()) <= 4294967295,
   );
   const canRecoverLegacyTranscript = lecture?.status === 'FINALIZADO'
+    && lecture.canManage
     && transcriptLooksLikeLegacyLargeObjectReference && !hasPrimaryStudySections;
   const canRetryIncompleteSummary = lecture?.status === 'FINALIZADO'
+    && lecture.canManage
     && Boolean(lecture.transcricao && lecture.transcricao.length >= 300)
     && !hasPrimaryStudySections;
   const canShareSummary = Boolean(material.overview || SUMMARY_SECTIONS.some((section) => material[section.key].length > 0));
@@ -84,7 +86,7 @@ export default function LectureDetails() {
     setActionBusy(true);
     try {
       const accepted = await retryLecture(id);
-      setLecture({ ...accepted, transcricao: lecture?.transcricao ?? null, resumo: lecture?.resumo ?? null });
+      setLecture({ ...accepted, transcricao: lecture?.transcricao ?? null, resumo: lecture?.resumo ?? null, canManage: lecture?.canManage ?? false });
     } catch (err) { Alert.alert('Não foi possível reprocessar', err instanceof Error ? err.message : 'Tente novamente.'); }
     finally { setActionBusy(false); }
   }
@@ -125,7 +127,7 @@ export default function LectureDetails() {
       {lecture.descricao ? <Text style={[styles.description, { color: colors.secondaryText }]}>{lecture.descricao}</Text> : null}
       <Text style={[styles.meta, { color: colors.mutedText }]}>{lecture.createdAt ? new Date(lecture.createdAt).toLocaleDateString('pt-BR', { dateStyle: 'long' }) : ''}  ·  {lecture.status === 'FINALIZADO' ? 'Concluída' : lecture.status === 'ERRO' ? 'Com erro' : 'Processando'}</Text>
 
-      {lecture.status === 'ERRO' ? <View style={[styles.errorBox, { backgroundColor: colors.errorSurface }]}><Text style={[styles.sectionTitle, { color: colors.text }]}>O processamento não foi concluído</Text><Text style={[styles.errorText, { color: colors.errorText }]}>{lecture.erroProcessamento || 'Tente processar a aula novamente.'}</Text><TouchableOpacity disabled={actionBusy} onPress={() => void reprocessar()} style={[styles.action, { backgroundColor: colors.primary }]}><Text style={styles.actionText}>{actionBusy ? 'Aguarde...' : 'Tentar novamente'}</Text></TouchableOpacity></View> : null}
+      {lecture.status === 'ERRO' ? <View style={[styles.errorBox, { backgroundColor: colors.errorSurface }]}><Text style={[styles.sectionTitle, { color: colors.text }]}>O processamento não foi concluído</Text><Text style={[styles.errorText, { color: colors.errorText }]}>{lecture.erroProcessamento || 'Tente processar a aula novamente.'}</Text>{lecture.canManage ? <TouchableOpacity disabled={actionBusy} onPress={() => void reprocessar()} style={[styles.action, { backgroundColor: colors.primary }]}><Text style={styles.actionText}>{actionBusy ? 'Aguarde...' : 'Tentar novamente'}</Text></TouchableOpacity> : null}</View> : null}
       {lecture.status === 'PROCESSANDO' ? <View style={[styles.processing, { backgroundColor: colors.softPrimary }]}><ActivityIndicator color={colors.primary} /><Text style={[styles.processingText, { color: colors.text }]}>Preparando o material de estudo.</Text></View> : null}
 
       <View accessibilityRole="tablist" style={[styles.tabs, { backgroundColor: colors.border }]}>
@@ -151,7 +153,7 @@ export default function LectureDetails() {
           {sharingBusy ? <ActivityIndicator size="small" color={colors.primary} /> : null}
           <Text style={[styles.secondaryText, { color: colors.text }]}>{sharingBusy ? 'Gerando PDF...' : 'Compartilhar'}</Text>
         </TouchableOpacity>
-        {lecture.status !== 'PROCESSANDO' ? <TouchableOpacity disabled={actionBusy} onPress={confirmarExclusao} style={[styles.deleteAction, { backgroundColor: colors.errorSurface }]}><Text style={[styles.deleteText, { color: colors.errorText }]}>Excluir</Text></TouchableOpacity> : null}
+        {lecture.canManage && lecture.status !== 'PROCESSANDO' ? <TouchableOpacity disabled={actionBusy} onPress={confirmarExclusao} style={[styles.deleteAction, { backgroundColor: colors.errorSurface }]}><Text style={[styles.deleteText, { color: colors.errorText }]}>Excluir</Text></TouchableOpacity> : null}
       </View>
       <TouchableOpacity onPress={() => void carregarLecture()} style={styles.refresh}><Text style={[styles.refreshText, { color: colors.primary }]}>Atualizar agora</Text></TouchableOpacity>
     </ScrollView>

@@ -100,8 +100,18 @@ Abra o projeto no Expo Go ou em um development build. A permissão de microfone 
 | `GET` | `/lectures/{id}` | Detalhe com transcrição, resumo e estado |
 | `POST` | `/lectures/{id}/retry` | Reagenda aula em erro se o áudio original ainda existir |
 | `DELETE` | `/lectures/{id}` | Remove registro e, após confirmar a transação, o áudio armazenado |
+| `GET` | `/subjects` | Lista matérias próprias do professor ou matérias em que o estudante está inscrito |
+| `POST` | `/subjects` | Cria matéria de professor autenticado; devolve código de ingresso |
+| `GET` | `/subjects/{id}` | Detalhes da matéria para seu professor ou estudantes inscritos |
+| `PUT` | `/subjects/{id}` | Edita matéria ativa própria do professor |
+| `POST` | `/subjects/{id}/archive` | Arquiva matéria própria sem apagar inscrições nem aulas |
+| `POST` | `/subjects/join` | Ingresso de estudante usando `{ "codigoIngresso": "..." }` |
+| `GET` | `/subjects/{id}/lectures` | Aulas da matéria para professor responsável e estudantes inscritos |
+| `GET` | `/subjects/{id}/available-lectures` | Lista aulas próprias sem matéria e aulas legadas sem proprietário conhecido |
+| `POST` | `/subjects/{id}/lectures/{lectureId}` | Associa à matéria ativa uma aula própria ou legada sem matéria |
+| `POST` | `/subjects/{id}/lectures` | Upload multipart de áudio pelo professor responsável |
 
-Os endpoints `/lectures/**` exigem `Authorization: Bearer <token>`. A API usa JWT HS256 sem sessão no servidor; requisições inválidas ou expiradas retornam 401. Cadastro não aceita papel: novas contas são sempre `ESTUDANTE`. O token e o perfil do usuário são derivados no servidor; um usuário comum não consegue consultar, apagar ou reenviar aulas de outra conta. Professores podem consultar aulas legadas sem proprietário conhecido; estudantes não. Não há ainda operações exclusivas de disciplina/turma, nem endpoint público para promover usuários.
+Os endpoints `/lectures/**` e `/subjects/**` exigem `Authorization: Bearer <token>`. Professores administram somente matérias próprias; estudantes acessam matéria e aulas associadas somente após ingresso. Ingresso direto por código é imediato, sem aprovação do professor; códigos de matérias arquivadas são recusados. Curso, turma e período são metadados da matéria em texto, pois o projeto não tinha entidades de catálogo adequadas. Aulas antigas mantêm `subject_id = NULL`; nenhuma associação é inferida. O seletor apresenta aulas sem matéria da conta do professor e aulas legadas sem proprietário conhecido, que já são visíveis aos professores na lista de histórico. Para evitar uma associação acidental, o aplicativo pede confirmação antes de vincular uma aula legada; ao confirmar, a aula passa a pertencer ao professor e é compartilhada com estudantes inscritos na matéria. Aulas com proprietário de outra conta e aulas já associadas não podem ser movidas.
 
 Exemplo para testar com `curl`:
 
@@ -119,7 +129,7 @@ Campos longos de transcrição e resumo são armazenados como `TEXT` no PostgreS
 
 ## Privacidade e limites atuais
 
-- O backend agora tem autenticação e isolamento por conta para novas aulas. A autorização de professor/estudante está preparada no token e no modelo; recursos de turmas e permissões de participação ainda não existem. A API não possui revogação de token nem recuperação de senha por e-mail.
+- O backend tem autenticação e isolamento por conta. O estudante pode ler as aulas compartilhadas nas matérias em que está inscrito; somente o proprietário pode apagar ou reprocessar uma aula. A API não possui revogação de token nem recuperação de senha por e-mail.
 - Os áudios e materiais ficam em disco local e PostgreSQL sem criptografia em nível de aplicação. Proteja os discos, backups e credenciais do ambiente.
 - A gravação pode ser pausada e retomada. Depois de finalizada, o áudio e os metadados são preservados no armazenamento do aplicativo até o backend confirmar o recebimento, inclusive se o app for fechado; a interrupção forçada durante a gravação ativa ainda pode impedir a recuperação.
 - É possível gravar pelo aplicativo; seleção de arquivo de áudio existente e paginação do histórico ainda não estão implementadas. Busca por título/descrição está disponível.
@@ -132,7 +142,7 @@ Campos longos de transcrição e resumo são armazenados como `TEXT` no PostgreS
 
 - A IA agora retorna o resumo como JSON estruturado em português (visão geral, ideias, conceitos, relações, exemplos e perguntas). O aplicativo renderiza cada tipo de conteúdo separadamente e oferece abas para resumo e transcrição. Resumos antigos em Markdown e dicionários Python são interpretados de forma limitada e segura; formatos desconhecidos permanecem como texto legível.
 - Em Configurações, a preferência de tema pode ser Automático, Claro ou Escuro. Ela é guardada localmente no diretório privado do app e aplicada sem reiniciar.
-- Espaços de matérias, matrículas, extração de tarefas e confirmação por professor ainda não estão implementados. Usuários e papéis já existem para servir de base; turmas e relacionamentos não são criados antecipadamente.
+- Tarefas, aprovação manual de ingresso e catálogo normalizado de cursos/turmas ainda não estão implementados. O ingresso atual por código é automático.
 - Os materiais gerados continuam sendo conteúdo de apoio e devem ser revisados pelo usuário.
 
 ## Verificações

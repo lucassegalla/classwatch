@@ -14,11 +14,16 @@ public record LectureDetailResponse(
         LectureStatus status,
         String erroProcessamento,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt
+        LocalDateTime updatedAt,
+        boolean canManage
 ) {
     public static LectureDetailResponse from(Lecture lecture) {
+        return from(lecture, true);
+    }
+
+    public static LectureDetailResponse from(Lecture lecture, boolean canManage) {
         return new LectureDetailResponse(lecture.getId(), lecture.getTitulo(), lecture.getDescricao(),
                 lecture.getTranscricao(), lecture.getResumo(), lecture.getStatus(),
-                lecture.getErroProcessamento(), lecture.getCreatedAt(), lecture.getUpdatedAt());
+                lecture.getErroProcessamento(), lecture.getCreatedAt(), lecture.getUpdatedAt(), canManage);
     }
 }

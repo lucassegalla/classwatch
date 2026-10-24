@@ -39,6 +39,10 @@ function ThemedNavigator() {
         <Stack.Screen name="lecture/new" options={{ title: 'Nova aula' }} />
         <Stack.Screen name="lecture/[id]" options={{ title: 'Aula' }} />
         <Stack.Screen name="history" options={{ title: 'Histórico' }} />
+        <Stack.Screen name="subjects/index" options={{ title: 'Matérias' }} />
+        <Stack.Screen name="subjects/[id]" options={{ title: 'Matéria' }} />
+        <Stack.Screen name="subjects/new" options={{ title: 'Matéria' }} />
+        <Stack.Screen name="subjects/join" options={{ title: 'Ingressar em matéria' }} />
         <Stack.Screen name="settings" options={{ title: 'Configurações' }} />
       </Stack>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />

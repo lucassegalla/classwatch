@@ -9,6 +9,8 @@ export interface PendingRecording {
   titulo: string;
   descricao: string;
   requestId: string;
+  subjectId?: number | null;
+  subjectName?: string | null;
 }
 
 export function createRequestId() {

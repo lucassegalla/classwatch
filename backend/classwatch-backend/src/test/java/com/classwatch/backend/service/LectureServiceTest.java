@@ -7,7 +7,10 @@ import com.classwatch.backend.model.Lecture;
 import com.classwatch.backend.model.LectureStatus;
 import com.classwatch.backend.model.AppUser;
 import com.classwatch.backend.model.UserRole;
+import com.classwatch.backend.model.Subject;
 import com.classwatch.backend.repository.LectureRepository;
+import com.classwatch.backend.repository.SubjectEnrollmentRepository;
+import com.classwatch.backend.repository.SubjectRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.mock.web.MockMultipartFile;
@@ -249,6 +252,68 @@ class LectureServiceTest {
         var detail = LectureDetailResponse.from(lecture);
         assertEquals(summary, detail.resumo());
         assertEquals(transcript, detail.transcricao());
+    }
+
+    @Test
+    void aulaEnviadaPorProfessorPodeSerAssociadaASuaMateria() {
+        AppUser professor = new AppUser();
+        professor.setId(1L);
+        professor.setRole(UserRole.PROFESSOR);
+        professor.setName("Professor");
+        Subject subject = new Subject();
+        subject.setId(5L);
+        subject.setNome("Redes");
+        subject.setProfessor(professor);
+        subject.setAtiva(true);
+
+        SubjectRepository subjects = (SubjectRepository) Proxy.newProxyInstance(
+                SubjectRepository.class.getClassLoader(), new Class<?>[]{SubjectRepository.class},
+                (proxy, method, args) -> switch (method.getName()) {
+                    case "findById" -> java.util.Optional.of(subject);
+                    case "toString" -> "SubjectRepository test proxy";
+                    default -> null;
+                });
+        SubjectEnrollmentRepository enrollments = (SubjectEnrollmentRepository) Proxy.newProxyInstance(
+                SubjectEnrollmentRepository.class.getClassLoader(), new Class<?>[]{SubjectEnrollmentRepository.class},
+                (proxy, method, args) -> method.getName().equals("toString") ? "EnrollmentRepository test proxy" : false);
+        SubjectService subjectService = new SubjectService(subjects, enrollments, null);
+
+        Lecture[] persisted = new Lecture[1];
+        var repository = (LectureRepository) Proxy.newProxyInstance(
+                LectureRepository.class.getClassLoader(), new Class<?>[]{LectureRepository.class},
+                (proxy, method, args) -> switch (method.getName()) {
+                    case "save" -> { persisted[0] = (Lecture) args[0]; persisted[0].setId(41L); yield persisted[0]; }
+                    case "findById" -> java.util.Optional.ofNullable(persisted[0]);
+                    case "findByOwner_IdAndRequestId" -> java.util.Optional.empty();
+                    case "toString" -> "LectureRepository test proxy";
+                    default -> null;
+                });
+        var service = new LectureService(repository, new RecordingTranscriptionService(), temporaryDirectory.toString(), subjectService);
+        var file = new MockMultipartFile("file", "aula.mp3", "audio/mpeg", new byte[]{1, 2, 3});
+        var saved = service.salvarComArquivo(file, "Aula de redes", "", "request-41", professor, subject.getId());
+
+        assertEquals(subject.getId(), saved.getSubject().getId());
+        assertEquals(professor.getId(), saved.getOwner().getId());
+    }
+
+    @Test
+    void estudanteInscritoPodeLerMasNaoPodeApagarOuReprocessarAulaDoProfessor() {
+        AppUser professor = new AppUser();
+        professor.setId(1L);
+        professor.setRole(UserRole.PROFESSOR);
+        AppUser student = new AppUser();
+        student.setId(2L);
+        student.setRole(UserRole.ESTUDANTE);
+        var lecture = new Lecture();
+        lecture.setId(22L);
+        lecture.setOwner(professor);
+        lecture.setStatus(LectureStatus.FINALIZADO);
+        var service = new LectureService(repositoryFor(lecture), new RecordingTranscriptionService(), temporaryDirectory.toString());
+
+        assertFalse(service.canManage(lecture, student));
+        assertThrows(com.classwatch.backend.exception.ResourceNotFoundException.class, () -> service.excluir(22L, student));
+        assertThrows(com.classwatch.backend.exception.ResourceNotFoundException.class, () -> service.retry(22L, student));
+        assertEquals(LectureStatus.FINALIZADO, lecture.getStatus());
     }
 
     @Test

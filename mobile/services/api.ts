@@ -1,4 +1,4 @@
-import type { AuthResponse, Lecture, LectureSummary, UserProfile } from '@/types/lecture';
+import type { AuthResponse, AvailableLectureSummary, Lecture, LectureSummary, Subject, SubjectInput, UserProfile } from '@/types/lecture';
 
 const rawApiUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
 const API_URL = rawApiUrl?.replace(/\/+$/, '');
@@ -86,6 +86,42 @@ export function getCurrentUser(): Promise<UserProfile> {
   return request<UserProfile>('/auth/me');
 }
 
+export function getSubjects(): Promise<Subject[]> {
+  return request<Subject[]>('/subjects');
+}
+
+export function getSubject(id: number): Promise<Subject> {
+  return request<Subject>(`/subjects/${id}`);
+}
+
+export function createSubject(data: SubjectInput): Promise<Subject> {
+  return request<Subject>('/subjects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+}
+
+export function updateSubject(id: number, data: SubjectInput): Promise<Subject> {
+  return request<Subject>(`/subjects/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+}
+
+export function archiveSubject(id: number): Promise<Subject> {
+  return request<Subject>(`/subjects/${id}/archive`, { method: 'POST' });
+}
+
+export function joinSubject(codigoIngresso: string): Promise<Subject> {
+  return request<Subject>('/subjects/join', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ codigoIngresso }) });
+}
+
+export function getSubjectLectures(id: number): Promise<LectureSummary[]> {
+  return request<LectureSummary[]>(`/subjects/${id}/lectures`);
+}
+
+export function getAvailableSubjectLectures(id: number): Promise<AvailableLectureSummary[]> {
+  return request<AvailableLectureSummary[]>(`/subjects/${id}/available-lectures`);
+}
+
+export function addExistingLectureToSubject(subjectId: number, lectureId: number): Promise<LectureSummary> {
+  return request<LectureSummary>(`/subjects/${subjectId}/lectures/${lectureId}`, { method: 'POST' });
+}
+
 export function getLectures(query = ''): Promise<LectureSummary[]> {
   const search = query.trim() ? `?q=${encodeURIComponent(query.trim())}` : '';
   return request<LectureSummary[]>(`/lectures${search}`);
@@ -108,6 +144,7 @@ export function uploadLecture(
   titulo: string,
   descricao: string,
   requestId: string,
+  subjectId?: number,
 ): Promise<LectureSummary> {
   const formData = new FormData();
 
@@ -121,8 +158,8 @@ export function uploadLecture(
   formData.append('titulo', titulo.trim());
   formData.append('descricao', descricao.trim());
   formData.append('requestId', requestId);
-
-  return request<LectureSummary>('/lectures/upload', {
+  const path = subjectId == null ? '/lectures/upload' : `/subjects/${subjectId}/lectures`;
+  return request<LectureSummary>(path, {
     method: 'POST',
     body: formData,
   });

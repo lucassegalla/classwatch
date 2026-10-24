@@ -8,7 +8,7 @@ import {
   View,
 } from 'react-native';
 import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioRecorder, type AudioRecorder } from 'expo-audio';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 
 import { getLecture, retryLecture, uploadLecture } from '@/services/api';
 import { clearPendingRecording, createRequestId, loadPendingRecording, savePendingRecording } from '@/services/pendingRecording';
@@ -25,6 +25,9 @@ const STATUS_LABEL: Record<Exclude<ScreenStatus, 'IDLE' | 'ERRO'>, string> = {
 };
 
 export default function NewLectureScreen() {
+  const params = useLocalSearchParams<{ subjectId?: string; subjectName?: string }>();
+  const paramSubjectId = params.subjectId && Number.isInteger(Number(params.subjectId)) ? Number(params.subjectId) : null;
+  const paramSubjectName = typeof params.subjectName === 'string' ? params.subjectName : null;
   const { colors } = useClassWatchTheme();
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [titulo, setTitulo] = useState('');
@@ -35,11 +38,13 @@ export default function NewLectureScreen() {
   const [audioUri, setAudioUri] = useState<string | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [recordingSubjectId, setRecordingSubjectId] = useState<number | null>(paramSubjectId);
+  const [recordingSubjectName, setRecordingSubjectName] = useState<string | null>(paramSubjectName);
   const [error, setError] = useState<string | null>(null);
   const emRequisicao = useRef(false);
   const recordingRef = useRef<AudioRecorder | null>(null);
-  const draftRef = useRef({ titulo, descricao });
-  draftRef.current = { titulo, descricao };
+  const draftRef = useRef({ titulo, descricao, subjectId: recordingSubjectId, subjectName: recordingSubjectName });
+  draftRef.current = { titulo, descricao, subjectId: recordingSubjectId, subjectName: recordingSubjectName };
 
   useEffect(() => () => {
     const activeRecording = recordingRef.current;
@@ -47,7 +52,7 @@ export default function NewLectureScreen() {
     void activeRecording.stop().then(() => {
       const uri = activeRecording.uri;
       if (uri && draftRef.current.titulo.trim()) {
-        savePendingRecording(uri, { titulo: draftRef.current.titulo.trim(), descricao: draftRef.current.descricao.trim(), requestId: createRequestId() });
+        savePendingRecording(uri, { titulo: draftRef.current.titulo.trim(), descricao: draftRef.current.descricao.trim(), requestId: createRequestId(), subjectId: draftRef.current.subjectId, subjectName: draftRef.current.subjectName });
       }
     }).catch(() => undefined);
   }, []);
@@ -60,6 +65,8 @@ export default function NewLectureScreen() {
       setRequestId(pending.requestId);
       setTitulo(pending.titulo);
       setDescricao(pending.descricao);
+      setRecordingSubjectId(pending.subjectId ?? null);
+      setRecordingSubjectName(pending.subjectName ?? null);
       setStatus('PRONTO');
     });
     return () => { active = false; };
@@ -120,7 +127,7 @@ export default function NewLectureScreen() {
       }
 
       const idempotencyKey = createRequestId();
-      const persistentUri = savePendingRecording(uri, { titulo: titulo.trim(), descricao: descricao.trim(), requestId: idempotencyKey });
+      const persistentUri = savePendingRecording(uri, { titulo: titulo.trim(), descricao: descricao.trim(), requestId: idempotencyKey, subjectId: recordingSubjectId, subjectName: recordingSubjectName });
       setAudioUri(persistentUri);
       setRequestId(idempotencyKey);
       setStatus('PRONTO');
@@ -136,7 +143,7 @@ export default function NewLectureScreen() {
     setError(null);
     setStatus('ENVIANDO');
     try {
-      const lecture = await uploadLecture(audioUri, titulo, descricao, requestId ?? createRequestId());
+      const lecture = await uploadLecture(audioUri, titulo, descricao, requestId ?? createRequestId(), recordingSubjectId ?? undefined);
       setLectureId(lecture.id);
       setAudioUri(null);
       setStatus('PROCESSANDO');
@@ -254,6 +261,7 @@ export default function NewLectureScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <Text style={[styles.title, { color: colors.text }]}>Nova aula</Text>
+      {recordingSubjectId ? <Text style={[styles.subjectNote, { color: colors.primary }]}>Matéria: {recordingSubjectName || 'selecionada'}</Text> : null}
 
       <TextInput
         placeholder="Título da aula"
@@ -341,6 +349,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginBottom: 8,
   },
+  subjectNote: { fontWeight: '700', marginBottom: 14 },
   input: {
     paddingHorizontal: 16,
     paddingVertical: 15,

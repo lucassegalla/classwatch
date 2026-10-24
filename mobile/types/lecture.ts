@@ -10,9 +10,14 @@ export interface LectureSummary {
   updatedAt: string | null;
 }
 
+export interface AvailableLectureSummary extends LectureSummary {
+  legacy: boolean;
+}
+
 export interface Lecture extends LectureSummary {
   transcricao: string | null;
   resumo: string | null;
+  canManage: boolean;
 }
 
 export type UserRole = 'PROFESSOR' | 'ESTUDANTE';
@@ -29,4 +34,26 @@ export interface AuthResponse {
   tokenType: 'Bearer';
   expiresAt: string;
   user: UserProfile;
+}
+
+export interface Subject {
+  id: number;
+  nome: string;
+  descricao: string;
+  curso: string;
+  turma: string;
+  periodoLetivo: string;
+  professorId: number;
+  professorNome: string;
+  codigoIngresso: string | null;
+  ativa: boolean;
+  createdAt: string | null;
+}
+
+export interface SubjectInput {
+  nome: string;
+  descricao: string;
+  curso: string;
+  turma: string;
+  periodoLetivo: string;
 }

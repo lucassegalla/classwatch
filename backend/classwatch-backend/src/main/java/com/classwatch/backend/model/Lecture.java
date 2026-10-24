@@ -41,6 +41,10 @@ public class Lecture {
     @JoinColumn(name = "owner_id", foreignKey = @ForeignKey(name = "fk_lectures_owner"))
     private AppUser owner;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "subject_id", foreignKey = @ForeignKey(name = "fk_lectures_subject"))
+    private Subject subject;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
@@ -128,6 +132,10 @@ public class Lecture {
     public AppUser getOwner() { return owner; }
 
     public void setOwner(AppUser owner) { this.owner = owner; }
+
+    public Subject getSubject() { return subject; }
+
+    public void setSubject(Subject subject) { this.subject = subject; }
 
     public LocalDateTime getCreatedAt() {
         return createdAt;
