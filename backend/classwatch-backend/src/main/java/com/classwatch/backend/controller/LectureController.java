@@ -1,6 +1,7 @@
 package com.classwatch.backend.controller;
 
 import com.classwatch.backend.dto.LectureResponse;
+import com.classwatch.backend.dto.LectureDetailResponse;
 import com.classwatch.backend.service.LectureService;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -23,21 +24,31 @@ public class LectureController {
     public ResponseEntity<LectureResponse> upload(
             @RequestParam("file") MultipartFile file,
             @RequestParam("titulo") String titulo,
-            @RequestParam(value = "descricao", defaultValue = "") String descricao
+            @RequestParam(value = "descricao", defaultValue = "") String descricao,
+            @RequestParam(value = "requestId", required = false) String requestId
     ) {
         return ResponseEntity.accepted()
-                .body(LectureResponse.from(service.salvarComArquivo(file, titulo, descricao)));
+                .body(LectureResponse.from(service.salvarComArquivo(file, titulo, descricao, requestId)));
     }
 
     @GetMapping
-    public List<LectureResponse> listar() {
-        return service.listar().stream()
-                .map(LectureResponse::from)
-                .toList();
+    public List<LectureResponse> listar(@RequestParam(value = "q", required = false) String query) {
+        return service.listar(query);
     }
 
     @GetMapping("/{id}")
-    public LectureResponse buscarPorId(@PathVariable Long id) {
-        return LectureResponse.from(service.buscarPorId(id));
+    public LectureDetailResponse buscarPorId(@PathVariable Long id) {
+        return LectureDetailResponse.from(service.buscarPorId(id));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> excluir(@PathVariable Long id) {
+        service.excluir(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{id}/retry")
+    public ResponseEntity<LectureResponse> retry(@PathVariable Long id) {
+        return ResponseEntity.accepted().body(LectureResponse.from(service.retry(id)));
     }
 }

@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "classwatch",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
@@ -17,7 +17,7 @@
     "android": {
       "permissions": ["RECORD_AUDIO"],
       "adaptiveIcon": {
-        "backgroundColor": "#121212",
+        "backgroundColor": "#f6f7fb",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -32,14 +32,22 @@
     "plugins": [
       "expo-router",
       [
+        "expo-audio",
+        {
+          "microphonePermission": "O ClassWatch usa o microfone para gravar aulas e gerar materiais de estudo.",
+          "recordAudioAndroid": true,
+          "enableBackgroundRecording": false
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#121212",
+          "backgroundColor": "#f6f7fb",
           "dark": {
-            "backgroundColor": "#121212"
+            "backgroundColor": "#111827"
           }
         }
       ],

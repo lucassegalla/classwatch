@@ -1,17 +1,20 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   RefreshControl,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 
-import { getLectures } from '@/services/api';
-import type { Lecture, LectureStatus } from '@/types/lecture';
+import { deleteLecture, getLectures } from '@/services/api';
+import type { LectureSummary, LectureStatus } from '@/types/lecture';
+import { useClassWatchTheme } from '@/services/theme';
 
 const STATUS_LABEL: Record<LectureStatus, string> = {
   PROCESSANDO: 'Processando',
@@ -35,10 +38,18 @@ function formatDate(value: string | null) {
 }
 
 export default function HistoryScreen() {
-  const [lectures, setLectures] = useState<Lecture[]>([]);
+  const [lectures, setLectures] = useState<LectureSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const { colors } = useClassWatchTheme();
+
+  useEffect(() => {
+    const timeout = setTimeout(() => setSearchQuery(query), 300);
+    return () => clearTimeout(timeout);
+  }, [query]);
 
   const carregarLectures = useCallback(async (manualRefresh = false) => {
     if (manualRefresh) {
@@ -50,14 +61,14 @@ export default function HistoryScreen() {
     setError(null);
 
     try {
-      setLectures(await getLectures());
+      setLectures(await getLectures(searchQuery));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível carregar o histórico.');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [searchQuery]);
 
   useFocusEffect(
     useCallback(() => {
@@ -65,11 +76,25 @@ export default function HistoryScreen() {
     }, [carregarLectures]),
   );
 
+  function confirmarExclusao(lecture: LectureSummary) {
+    Alert.alert('Excluir aula?', `“${lecture.titulo}” e o áudio associado serão removidos.`, [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Excluir', style: 'destructive', onPress: () => void (async () => {
+        try {
+          await deleteLecture(lecture.id);
+          setLectures((items) => items.filter((item) => item.id !== lecture.id));
+        } catch (err) {
+          Alert.alert('Não foi possível excluir', err instanceof Error ? err.message : 'Tente novamente.');
+        }
+      })() },
+    ]);
+  }
+
   if (loading) {
     return (
-      <View style={styles.center}>
+      <View style={[styles.center, { backgroundColor: colors.background }]}>
         <ActivityIndicator size="large" />
-        <Text style={styles.loadingText}>Carregando aulas...</Text>
+        <Text style={[styles.loadingText, { color: colors.secondaryText }]}>Carregando aulas...</Text>
       </View>
     );
   }
@@ -78,22 +103,31 @@ export default function HistoryScreen() {
     <FlatList
       data={lectures}
       keyExtractor={(lecture) => lecture.id.toString()}
-      contentContainerStyle={styles.list}
+      contentContainerStyle={[styles.list, { backgroundColor: colors.background }]}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
           onRefresh={() => void carregarLectures(true)}
-          tintColor="#ffffff"
+          tintColor="#315ce7"
         />
       }
       ListHeaderComponent={
         <>
-          <Text style={styles.title}>Histórico</Text>
+          <Text style={[styles.title, { color: colors.text }]}>Histórico</Text>
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            onSubmitEditing={() => setSearchQuery(query)}
+            placeholder="Buscar por título ou disciplina"
+            placeholderTextColor="#7d8795"
+            returnKeyType="search"
+            style={[styles.search, { backgroundColor: colors.input, color: colors.text, borderColor: colors.border }]}
+          />
           {error ? (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorText}>{error}</Text>
+            <View style={[styles.errorBox, { backgroundColor: colors.errorSurface }]}>
+              <Text style={[styles.errorText, { color: colors.errorText }]}>{error}</Text>
               <TouchableOpacity onPress={() => void carregarLectures()}>
-                <Text style={styles.retryText}>Tentar novamente</Text>
+                <Text style={[styles.retryText, { color: colors.primary }]}>Tentar novamente</Text>
               </TouchableOpacity>
             </View>
           ) : null}
@@ -101,9 +135,9 @@ export default function HistoryScreen() {
       }
       ListEmptyComponent={
         !error ? (
-          <View style={styles.emptyBox}>
-            <Text style={styles.emptyTitle}>Nenhuma aula ainda</Text>
-            <Text style={styles.emptyText}>Grave uma aula para ela aparecer aqui.</Text>
+          <View style={[styles.emptyBox, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.emptyTitle, { color: colors.text }]}>Nenhuma aula ainda</Text>
+            <Text style={[styles.emptyText, { color: colors.secondaryText }]}>Grave uma aula para ela aparecer aqui.</Text>
           </View>
         ) : null
       }
@@ -111,25 +145,19 @@ export default function HistoryScreen() {
         const date = formatDate(item.createdAt);
 
         return (
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={() =>
-              router.push({
-                pathname: '/lecture/[id]',
-                params: { id: item.id.toString() },
-              })
-            }
-            style={styles.card}
-          >
-            <Text style={styles.cardTitle}>{item.titulo}</Text>
-
-            {item.descricao ? <Text style={styles.description}>{item.descricao}</Text> : null}
-
-            <View style={styles.metaRow}>
-              <Text style={styles.status}>{STATUS_LABEL[item.status]}</Text>
-              {date ? <Text style={styles.date}>{date}</Text> : null}
-            </View>
-          </TouchableOpacity>
+          <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => router.push({ pathname: '/lecture/[id]', params: { id: item.id.toString() } })}
+              accessibilityRole="button"
+              accessibilityLabel={`Abrir aula ${item.titulo}`}
+            >
+              <Text style={[styles.cardTitle, { color: colors.text }]}>{item.titulo}</Text>
+              {item.descricao ? <Text style={[styles.description, { color: colors.secondaryText }]}>{item.descricao}</Text> : null}
+              <View style={styles.metaRow}><Text style={[styles.status, { color: item.status === 'ERRO' ? colors.errorText : colors.primary }]}>{STATUS_LABEL[item.status]}</Text>{date ? <Text style={[styles.date, { color: colors.mutedText }]}>{date}</Text> : null}</View>
+            </TouchableOpacity>
+            {item.status !== 'PROCESSANDO' ? <TouchableOpacity accessibilityRole="button" onPress={() => confirmarExclusao(item)} style={styles.deleteButton}><Text style={[styles.deleteText, { color: colors.errorText }]}>Excluir aula</Text></TouchableOpacity> : null}
+          </View>
         );
       }}
     />
@@ -139,7 +167,6 @@ export default function HistoryScreen() {
 const styles = StyleSheet.create({
   center: {
     flex: 1,
-    backgroundColor: '#121212',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -149,29 +176,24 @@ const styles = StyleSheet.create({
   },
   list: {
     flexGrow: 1,
-    backgroundColor: '#121212',
     padding: 20,
     paddingBottom: 40,
   },
   title: {
-    color: '#ffffff',
     fontSize: 30,
     fontWeight: '800',
     marginBottom: 20,
   },
   card: {
-    backgroundColor: '#1e1e1e',
-    padding: 18,
     borderRadius: 14,
+    padding: 18,
     marginBottom: 14,
   },
   cardTitle: {
-    color: '#ffffff',
     fontSize: 18,
     fontWeight: '700',
   },
   description: {
-    color: '#a3a3a3',
     marginTop: 6,
     lineHeight: 20,
   },
@@ -182,12 +204,10 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   status: {
-    color: '#93c5fd',
     fontSize: 13,
     fontWeight: '600',
   },
   date: {
-    color: '#737373',
     fontSize: 12,
   },
   errorBox: {
@@ -206,17 +226,17 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   emptyBox: {
-    backgroundColor: '#1e1e1e',
     borderRadius: 14,
     padding: 22,
   },
   emptyTitle: {
-    color: '#ffffff',
     fontWeight: '700',
     fontSize: 17,
   },
   emptyText: {
-    color: '#a3a3a3',
     marginTop: 6,
   },
+  search: { borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13, marginBottom: 18, borderWidth: 1 },
+  deleteButton: { alignSelf: 'flex-end', paddingTop: 12 },
+  deleteText: { color: '#b42318', fontSize: 13, fontWeight: '600' },
 });

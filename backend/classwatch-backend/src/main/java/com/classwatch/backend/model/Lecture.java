@@ -21,6 +21,9 @@ public class Lecture {
     @Column(nullable = false, length = 2048)
     private String audioPath;
 
+    @Column(unique = true, length = 64)
+    private String requestId;
+
     @Lob
     private String transcricao;
 
@@ -77,6 +80,10 @@ public class Lecture {
     public String getAudioPath() {
         return audioPath;
     }
+
+    public String getRequestId() { return requestId; }
+
+    public void setRequestId(String requestId) { this.requestId = requestId; }
 
     public void setAudioPath(String audioPath) {
         this.audioPath = audioPath;

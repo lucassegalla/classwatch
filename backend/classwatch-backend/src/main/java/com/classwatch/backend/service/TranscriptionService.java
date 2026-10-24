@@ -6,8 +6,8 @@ import com.classwatch.backend.repository.LectureRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -23,8 +23,11 @@ public class TranscriptionService {
     private static final Logger log = LoggerFactory.getLogger(TranscriptionService.class);
     private static final String TRANSCRICAO_PREFIX = "CLASSWATCH_TRANSCRICAO:";
     private static final String RESUMO_PREFIX = "CLASSWATCH_RESUMO:";
+    private static final String STATUS_PREFIX = "CLASSWATCH_STATUS:";
+    private static final String ERROR_PREFIX = "CLASSWATCH_ERROR:";
 
     private final LectureRepository repository;
+    private final ThreadPoolTaskExecutor transcriptionExecutor;
     private final String pythonPath;
     private final String configuredScriptPath;
     private final long timeoutSeconds;
@@ -34,6 +37,7 @@ public class TranscriptionService {
 
     public TranscriptionService(
             LectureRepository repository,
+            @org.springframework.beans.factory.annotation.Qualifier("transcriptionExecutor") ThreadPoolTaskExecutor transcriptionExecutor,
             @Value("${classwatch.python.path:python}") String pythonPath,
             @Value("${classwatch.ai.script-path:}") String configuredScriptPath,
             @Value("${classwatch.ai.timeout-seconds:1800}") long timeoutSeconds,
@@ -42,6 +46,7 @@ public class TranscriptionService {
             @Value("${classwatch.ai.openai-model:gpt-4o-mini}") String openAiModel
     ) {
         this.repository = repository;
+        this.transcriptionExecutor = transcriptionExecutor;
         this.pythonPath = pythonPath;
         this.configuredScriptPath = configuredScriptPath;
         this.timeoutSeconds = timeoutSeconds;
@@ -50,8 +55,11 @@ public class TranscriptionService {
         this.openAiModel = openAiModel;
     }
 
-    @Async("transcriptionExecutor")
-    public void processar(Long lectureId) {
+    private void processar(Long lectureId) {
+        processar(lectureId, false);
+    }
+
+    private void processar(Long lectureId, boolean summarizeExistingTranscript) {
         Lecture lecture = repository.findById(lectureId).orElse(null);
 
         if (lecture == null) {
@@ -59,18 +67,17 @@ public class TranscriptionService {
         }
 
         try {
-            Path audioPath = Path.of(lecture.getAudioPath()).toAbsolutePath().normalize();
-            if (!Files.exists(audioPath)) {
-                throw new ProcessingException("Arquivo de áudio não encontrado para processamento");
-            }
-
             Path scriptPath = resolveScriptPath();
-
-            ProcessBuilder processBuilder = new ProcessBuilder(
-                    pythonPath,
-                    scriptPath.toString(),
-                    audioPath.toString()
-            );
+            ProcessBuilder processBuilder;
+            if (summarizeExistingTranscript) {
+                processBuilder = new ProcessBuilder(pythonPath, scriptPath.toString(), "--summarize-stdin");
+            } else {
+                Path audioPath = Path.of(lecture.getAudioPath()).toAbsolutePath().normalize();
+                if (!Files.exists(audioPath)) {
+                    throw new ProcessingException("Arquivo de áudio não encontrado para processamento");
+                }
+                processBuilder = new ProcessBuilder(pythonPath, scriptPath.toString(), audioPath.toString());
+            }
 
             processBuilder.redirectErrorStream(true);
             processBuilder.environment().put("WHISPER_MODEL", whisperModel);
@@ -84,6 +91,12 @@ public class TranscriptionService {
 
             Process process = processBuilder.start();
 
+            if (summarizeExistingTranscript) {
+                try (var input = process.getOutputStream()) {
+                    input.write((lecture.getTranscricao() == null ? "" : lecture.getTranscricao()).getBytes(StandardCharsets.UTF_8));
+                }
+            }
+
             CompletableFuture<String> outputFuture = CompletableFuture.supplyAsync(() -> {
                 try {
                     return new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
@@ -95,6 +108,7 @@ public class TranscriptionService {
             boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
 
             if (!finished) {
+                process.descendants().forEach(ProcessHandle::destroyForcibly);
                 process.destroyForcibly();
                 throw new ProcessingException("O processamento excedeu o tempo máximo permitido");
             }
@@ -102,25 +116,75 @@ public class TranscriptionService {
             String output = outputFuture.get(10, TimeUnit.SECONDS).trim();
 
             if (process.exitValue() != 0) {
-                throw new ProcessingException(extractUsefulError(output));
+                log.warn("Processador da aula {} retornou código {}", lectureId, process.exitValue());
+                throw new ProcessingException("A transcrição ou geração de material falhou. Verifique as dependências e tente novamente.");
             }
 
             String transcricao = decodeResult(output, TRANSCRICAO_PREFIX);
-            String resumo = decodeResult(output, RESUMO_PREFIX);
+            String resumo = decodeOptionalResult(output, RESUMO_PREFIX);
+            String statusLine = output.lines().filter(line -> line.startsWith(STATUS_PREFIX))
+                    .map(line -> line.substring(STATUS_PREFIX.length()).trim()).findFirst().orElse(null);
+            String status = statusLine == null ? "GENERATED" : statusLine;
 
-            lecture.setTranscricao(transcricao);
+            // Older Python workers did not emit a status. A non-empty legacy summary
+            // remains valid and is kept compatible; new workers report failures explicitly.
+            if (!transcricao.isBlank()) lecture.setTranscricao(transcricao);
+            boolean invalidGeneratedSummary = statusLine != null && "GENERATED".equals(status)
+                    && !StudySummaryValidator.hasStudySections(resumo);
+            if ("FAILED".equals(status) || resumo == null || resumo.isBlank() || invalidGeneratedSummary) {
+                lecture.setStatus(LectureStatus.ERRO);
+                lecture.setErroProcessamento(decodeOptionalResult(output, ERROR_PREFIX));
+                if (lecture.getErroProcessamento() == null || lecture.getErroProcessamento().isBlank()) {
+                    lecture.setErroProcessamento("Não foi possível gerar um resumo válido. A transcrição foi preservada; tente novamente.");
+                }
+                repository.save(lecture);
+                log.warn("Resumo da aula {} não foi gerado; transcrição preservada", lectureId);
+                return;
+            }
+            if (!"GENERATED".equals(status) && !"INSUFFICIENT".equals(status)) {
+                throw new ProcessingException("O processador retornou um estado de resumo inválido");
+            }
+
+            if ("INSUFFICIENT".equals(status) && StudySummaryValidator.hasStudySections(lecture.getResumo())) {
+                lecture.setStatus(LectureStatus.FINALIZADO);
+                lecture.setErroProcessamento(null);
+                repository.save(lecture);
+                log.info("Resumo anterior válido da aula {} foi preservado", lectureId);
+                return;
+            }
+
             lecture.setResumo(resumo);
             lecture.setStatus(LectureStatus.FINALIZADO);
             lecture.setErroProcessamento(null);
             repository.save(lecture);
-
             log.info("Processamento da aula {} finalizado", lectureId);
         } catch (Exception exception) {
-            log.error("Falha ao processar aula {}: {}", lectureId, exception.getMessage());
+            log.error("Falha ao processar aula {} ({})", lectureId, exception.getClass().getSimpleName());
 
             lecture.setStatus(LectureStatus.ERRO);
             lecture.setErroProcessamento(toUserMessage(exception));
             repository.save(lecture);
+        }
+    }
+
+    public void agendar(Long lectureId) {
+        agendar(lectureId, false);
+    }
+
+    public void agendarResumo(Long lectureId) {
+        agendar(lectureId, true);
+    }
+
+    private void agendar(Long lectureId, boolean summarizeExistingTranscript) {
+        try {
+            transcriptionExecutor.execute(() -> processar(lectureId, summarizeExistingTranscript));
+        } catch (java.util.concurrent.RejectedExecutionException exception) {
+            repository.findById(lectureId).ifPresent(lecture -> {
+                lecture.setStatus(LectureStatus.ERRO);
+                lecture.setErroProcessamento("A fila de processamento está cheia. Tente novamente mais tarde.");
+                repository.save(lecture);
+            });
+            log.warn("Fila cheia; aula {} não foi agendada", lectureId);
         }
     }
 
@@ -150,32 +214,24 @@ public class TranscriptionService {
     }
 
     private String decodeResult(String output, String prefix) {
+        String decoded = decodeOptionalResult(output, prefix);
+        if (decoded == null) throw new ProcessingException("Resposta inválida do processador Python");
+        return decoded;
+    }
+
+    private String decodeOptionalResult(String output, String prefix) {
         String encoded = output.lines()
                 .filter(line -> line.startsWith(prefix))
                 .map(line -> line.substring(prefix.length()).trim())
                 .reduce((first, second) -> second)
-                .orElseThrow(() -> new ProcessingException("Resposta inválida do processador Python"));
+                .orElse(null);
+        if (encoded == null) return null;
 
         try {
             return new String(Base64.getDecoder().decode(encoded), StandardCharsets.UTF_8).trim();
         } catch (IllegalArgumentException exception) {
             throw new ProcessingException("Não foi possível interpretar a resposta do processador Python");
         }
-    }
-
-    private String extractUsefulError(String output) {
-        if (output == null || output.isBlank()) {
-            return "O processador Python foi encerrado com erro";
-        }
-
-        String[] lines = output.split("\\R");
-        String lastLine = lines[lines.length - 1].trim();
-
-        if (lastLine.length() > 500) {
-            lastLine = lastLine.substring(0, 500);
-        }
-
-        return "Falha no processamento: " + lastLine;
     }
 
     private String toUserMessage(Exception exception) {

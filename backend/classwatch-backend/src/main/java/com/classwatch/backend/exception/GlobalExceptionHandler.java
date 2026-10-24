@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -17,6 +18,9 @@ import java.time.LocalDateTime;
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    @Value("${MAX_UPLOAD_SIZE:50MB}")
+    private String maxUploadSize;
 
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ApiError> handleNotFound(ResourceNotFoundException exception,
@@ -34,8 +38,8 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleUploadSize(MaxUploadSizeExceededException exception,
                                                       HttpServletRequest request) {
         return build(
-                HttpStatus.PAYLOAD_TOO_LARGE,
-                "O arquivo excede o limite de 50 MB",
+                HttpStatus.CONTENT_TOO_LARGE,
+                "O arquivo excede o limite configurado de " + maxUploadSize,
                 request.getRequestURI()
         );
     }

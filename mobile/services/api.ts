@@ -1,4 +1,4 @@
-import type { Lecture } from '@/types/lecture';
+import type { Lecture, LectureSummary } from '@/types/lecture';
 
 const rawApiUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
 const API_URL = rawApiUrl?.replace(/\/+$/, '');
@@ -38,11 +38,21 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     throw new Error(message);
   }
 
+  if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
 
-export function getLectures(): Promise<Lecture[]> {
-  return request<Lecture[]>('/lectures');
+export function getLectures(query = ''): Promise<LectureSummary[]> {
+  const search = query.trim() ? `?q=${encodeURIComponent(query.trim())}` : '';
+  return request<LectureSummary[]>(`/lectures${search}`);
+}
+
+export function deleteLecture(id: number): Promise<void> {
+  return request<void>(`/lectures/${id}`, { method: 'DELETE' });
+}
+
+export function retryLecture(id: number): Promise<LectureSummary> {
+  return request<LectureSummary>(`/lectures/${id}/retry`, { method: 'POST' });
 }
 
 export function getLecture(id: number): Promise<Lecture> {
@@ -53,7 +63,8 @@ export function uploadLecture(
   uri: string,
   titulo: string,
   descricao: string,
-): Promise<Lecture> {
+  requestId: string,
+): Promise<LectureSummary> {
   const formData = new FormData();
 
   const file = {
@@ -65,8 +76,9 @@ export function uploadLecture(
   formData.append('file', file as unknown as Blob);
   formData.append('titulo', titulo.trim());
   formData.append('descricao', descricao.trim());
+  formData.append('requestId', requestId);
 
-  return request<Lecture>('/lectures/upload', {
+  return request<LectureSummary>('/lectures/upload', {
     method: 'POST',
     body: formData,
   });

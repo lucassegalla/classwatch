@@ -30,6 +30,6 @@ public class ProcessingRecoveryService {
             log.info("Recuperando {} aula(s) que estavam em processamento", pendentes.size());
         }
 
-        pendentes.forEach(lecture -> transcriptionService.processar(lecture.getId()));
+        pendentes.forEach(lecture -> transcriptionService.agendar(lecture.getId()));
     }
 }
