@@ -5,6 +5,8 @@ import com.classwatch.backend.exception.ResourceNotFoundException;
 import com.classwatch.backend.dto.LectureResponse;
 import com.classwatch.backend.model.Lecture;
 import com.classwatch.backend.model.LectureStatus;
+import com.classwatch.backend.model.AppUser;
+import com.classwatch.backend.model.UserRole;
 import com.classwatch.backend.repository.LectureRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -29,6 +31,9 @@ public class LectureService {
     private static final Logger log = LoggerFactory.getLogger(LectureService.class);
 
     private static final Set<String> EXTENSOES_PERMITIDAS = Set.of("m4a", "aac", "mp3", "wav");
+    // Older Hibernate mappings could expose a PostgreSQL large-object OID as a decimal string.
+    // Treat it as a recovery candidate only when the summary is also absent/insufficient.
+    private static final java.util.regex.Pattern LEGACY_LO_REFERENCE = java.util.regex.Pattern.compile("[0-9]{1,10}");
 
     private final LectureRepository repository;
     private final TranscriptionService transcriptionService;
@@ -47,12 +52,18 @@ public class LectureService {
     }
 
     public Lecture salvarComArquivo(MultipartFile file, String titulo, String descricao, String requestId) {
+        return salvarComArquivo(file, titulo, descricao, requestId, null);
+    }
+
+    public Lecture salvarComArquivo(MultipartFile file, String titulo, String descricao, String requestId, AppUser owner) {
         validarDados(file, titulo, descricao);
         if (requestId != null && !requestId.isBlank()) {
             if (requestId.length() > 64 || !requestId.matches("[A-Za-z0-9-]+")) {
                 throw new BadRequestException("Identificador de envio inválido");
             }
-            var existing = repository.findByRequestId(requestId);
+            var existing = owner == null
+                    ? repository.findByRequestId(requestId)
+                    : repository.findByOwner_IdAndRequestId(owner.getId(), requestId);
             if (existing.isPresent()) return existing.get();
         }
 
@@ -76,6 +87,7 @@ public class LectureService {
         lecture.setDescricao(descricao == null ? "" : descricao.trim());
         lecture.setAudioPath(destino.toString());
         lecture.setRequestId(requestId);
+        lecture.setOwner(owner);
         lecture.setStatus(LectureStatus.PROCESSANDO);
         lecture.setErroProcessamento(null);
 
@@ -99,23 +111,48 @@ public class LectureService {
         return repository.searchSummaries(termo);
     }
 
+    @Transactional(readOnly = true)
+    public List<LectureResponse> listar(String query, AppUser user) {
+        String term = query == null || query.isBlank() ? null : query.trim();
+        return repository.findVisibleSummaries(user.getId(), user.getRole() == UserRole.PROFESSOR, term);
+    }
+
+    @Transactional(readOnly = true)
     public Lecture buscarPorId(Long id) {
         return repository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Aula não encontrada"));
     }
 
+    @Transactional(readOnly = true)
+    public Lecture buscarPorId(Long id, AppUser user) {
+        return repository.findVisibleById(id, user.getId(), user.getRole() == UserRole.PROFESSOR)
+                .orElseThrow(() -> new ResourceNotFoundException("Aula não encontrada"));
+    }
+
     @Transactional
     public Lecture retry(Long id) {
-        Lecture lecture = buscarPorId(id);
+        return retryLecture(buscarPorId(id));
+    }
+
+    @Transactional
+    public Lecture retry(Long id, AppUser user) {
+        return retryLecture(buscarPorId(id, user));
+    }
+
+    private Lecture retryLecture(Lecture lecture) {
         boolean savedTranscript = lecture.getTranscricao() != null && !lecture.getTranscricao().isBlank();
+        boolean insufficientSummary = !StudySummaryValidator.hasStudySections(lecture.getResumo());
+        boolean legacyLargeObjectReference = savedTranscript
+                && isLegacyLargeObjectReference(lecture.getTranscricao()) && insufficientSummary;
         boolean incompleteSummary = savedTranscript
                 && lecture.getTranscricao().length() >= 300
-                && !StudySummaryValidator.hasStudySections(lecture.getResumo());
+                && insufficientSummary;
+        boolean reprocessAudio = !savedTranscript || legacyLargeObjectReference;
         if (lecture.getStatus() != LectureStatus.ERRO
-                && !(lecture.getStatus() == LectureStatus.FINALIZADO && incompleteSummary)) {
+                && !(lecture.getStatus() == LectureStatus.FINALIZADO && (incompleteSummary || legacyLargeObjectReference))) {
             throw new BadRequestException("Esta aula não possui uma falha de resumo recuperável");
         }
-        if (!savedTranscript && (lecture.getAudioPath() == null || !Files.isRegularFile(Path.of(lecture.getAudioPath())))) {
+        if (reprocessAudio && !audioDisponivel(lecture)) {
             throw new BadRequestException("O arquivo de áudio desta aula não está disponível para reprocessamento");
         }
         lecture.setStatus(LectureStatus.PROCESSANDO);
@@ -125,16 +162,45 @@ public class LectureService {
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                if (savedTranscript) transcriptionService.agendarResumo(lectureId);
+                if (!reprocessAudio) transcriptionService.agendarResumo(lectureId);
                 else transcriptionService.agendar(lectureId);
             }
         });
         return updated;
     }
 
+    private boolean audioDisponivel(Lecture lecture) {
+        try {
+            return lecture.getAudioPath() != null && Files.isRegularFile(Path.of(lecture.getAudioPath()));
+        } catch (RuntimeException exception) {
+            return false;
+        }
+    }
+
+    private boolean isLegacyLargeObjectReference(String value) {
+        if (value == null) return false;
+        String candidate = value.trim();
+        if (!LEGACY_LO_REFERENCE.matcher(candidate).matches()) return false;
+        try {
+            long oid = Long.parseLong(candidate);
+            return oid > 0 && oid <= 4_294_967_295L;
+        } catch (NumberFormatException exception) {
+            return false;
+        }
+    }
+
     @Transactional
     public void excluir(Long id) {
-        Lecture lecture = buscarPorId(id);
+        excluirLecture(buscarPorId(id));
+    }
+
+    @Transactional
+    public void excluir(Long id, AppUser user) {
+        excluirLecture(buscarPorId(id, user));
+    }
+
+    private void excluirLecture(Lecture lecture) {
+        Long id = lecture.getId();
         if (lecture.getStatus() == LectureStatus.PROCESSANDO) {
             throw new BadRequestException("Aguarde o fim do processamento antes de excluir esta aula");
         }

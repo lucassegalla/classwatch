@@ -1,5 +1,6 @@
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useClassWatchTheme, type ThemePreference } from '@/services/theme';
+import { useAuth } from '@/services/auth';
 
 const OPTIONS: { value: ThemePreference; label: string }[] = [
   { value: 'system', label: 'Automático' },
@@ -9,8 +10,24 @@ const OPTIONS: { value: ThemePreference; label: string }[] = [
 
 export default function SettingsScreen() {
   const { preference, colors, setPreference } = useClassWatchTheme();
+  const { user, logout } = useAuth();
+  async function confirmLogout() {
+    Alert.alert('Sair da conta?', 'Sua sessão será removida deste dispositivo.', [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Sair', style: 'destructive', onPress: () => { void logout(); } },
+    ]);
+  }
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <ScrollView style={[styles.background, { backgroundColor: colors.background }]} contentContainerStyle={styles.container}>
+      <Text style={[styles.title, { color: colors.text }]}>Conta</Text>
+      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, padding: 16, marginBottom: 24 }]}>
+        <Text style={[styles.accountName, { color: colors.text }]}>{user?.name}</Text>
+        <Text style={[styles.email, { color: colors.mutedText }]}>{user?.email}</Text>
+        <Text style={[styles.role, { color: colors.primary }]}>{user?.role === 'PROFESSOR' ? 'Professor' : 'Estudante'}</Text>
+        <TouchableOpacity accessibilityRole="button" onPress={confirmLogout} style={[styles.logout, { borderColor: colors.border }]}>
+          <Text style={[styles.logoutText, { color: colors.errorText }]}>Sair da conta</Text>
+        </TouchableOpacity>
+      </View>
       <Text style={[styles.title, { color: colors.text }]}>Aparência</Text>
       <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         {OPTIONS.map((option, index) => {
@@ -21,13 +38,19 @@ export default function SettingsScreen() {
           </TouchableOpacity>;
         })}
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  background: { flex: 1 },
   container: { flex: 1, padding: 20 },
   title: { fontSize: 24, fontWeight: '800', marginBottom: 16 },
+  accountName: { fontSize: 17, fontWeight: '800' },
+  email: { fontSize: 14, marginTop: 4 },
+  role: { fontSize: 13, fontWeight: '700', marginTop: 8 },
+  logout: { marginTop: 16, paddingVertical: 11, borderTopWidth: StyleSheet.hairlineWidth },
+  logoutText: { fontWeight: '700' },
   card: { borderWidth: 1, borderRadius: 16, paddingHorizontal: 16 },
   option: { minHeight: 60, flexDirection: 'row', alignItems: 'center', gap: 14 },
   copy: { flex: 1 },

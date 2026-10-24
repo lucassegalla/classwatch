@@ -1,10 +1,27 @@
-import type { Lecture, LectureSummary } from '@/types/lecture';
+import type { AuthResponse, Lecture, LectureSummary, UserProfile } from '@/types/lecture';
 
 const rawApiUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
 const API_URL = rawApiUrl?.replace(/\/+$/, '');
+let authToken: string | null = null;
+let unauthorizedHandler: (() => void) | null = null;
+
+export function setAuthToken(token: string | null) {
+  authToken = token;
+}
+
+export function setUnauthorizedHandler(handler: (() => void) | null) {
+  unauthorizedHandler = handler;
+}
 
 interface ApiErrorBody {
   message?: string;
+}
+
+export class ApiRequestError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = 'ApiRequestError';
+  }
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -14,16 +31,23 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     );
   }
 
-  const response = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers: {
-      Accept: 'application/json',
-      'ngrok-skip-browser-warning': 'true',
-      ...options?.headers,
-    },
-  });
+  const headers = new Headers(options?.headers);
+  headers.set('Accept', 'application/json');
+  headers.set('ngrok-skip-browser-warning', 'true');
+  const publicAuthRequest = path === '/auth/login' || path === '/auth/register';
+  if (authToken && !publicAuthRequest) headers.set('Authorization', `Bearer ${authToken}`);
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      ...options,
+      headers,
+    });
+  } catch {
+    throw new ApiRequestError('Não foi possível conectar ao ClassWatch. Verifique sua conexão e o endereço da API.', 0);
+  }
 
   if (!response.ok) {
+    if (response.status === 401 && authToken && !publicAuthRequest) unauthorizedHandler?.();
     let message = `Erro HTTP ${response.status}`;
 
     try {
@@ -35,11 +59,31 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
       // Mantém a mensagem padrão quando a resposta não for JSON.
     }
 
-    throw new Error(message);
+    throw new ApiRequestError(message, response.status);
   }
 
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
+}
+
+export function registerStudent(name: string, email: string, password: string): Promise<AuthResponse> {
+  return request<AuthResponse>('/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, email, password }),
+  });
+}
+
+export function login(email: string, password: string): Promise<AuthResponse> {
+  return request<AuthResponse>('/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export function getCurrentUser(): Promise<UserProfile> {
+  return request<UserProfile>('/auth/me');
 }
 
 export function getLectures(query = ''): Promise<LectureSummary[]> {

@@ -121,7 +121,16 @@ public class TranscriptionService {
             }
 
             String transcricao = decodeResult(output, TRANSCRICAO_PREFIX);
+            if (transcricao.isBlank() && summarizeExistingTranscript
+                    && lecture.getTranscricao() != null && !lecture.getTranscricao().isBlank()) {
+                // Some legacy summarization workers emitted no transcript field content.
+                // The source transcript is already persisted, so retain it for a summary-only retry.
+                transcricao = lecture.getTranscricao();
+            }
             String resumo = decodeOptionalResult(output, RESUMO_PREFIX);
+            if (transcricao.isBlank()) {
+                throw new ProcessingException("O processador não retornou uma transcrição. O áudio foi preservado para nova tentativa.");
+            }
             String statusLine = output.lines().filter(line -> line.startsWith(STATUS_PREFIX))
                     .map(line -> line.substring(STATUS_PREFIX.length()).trim()).findFirst().orElse(null);
             String status = statusLine == null ? "GENERATED" : statusLine;

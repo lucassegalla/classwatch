@@ -5,6 +5,8 @@ import com.classwatch.backend.dto.LectureDetailResponse;
 import com.classwatch.backend.exception.BadRequestException;
 import com.classwatch.backend.model.Lecture;
 import com.classwatch.backend.model.LectureStatus;
+import com.classwatch.backend.model.AppUser;
+import com.classwatch.backend.model.UserRole;
 import com.classwatch.backend.repository.LectureRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -17,6 +19,7 @@ import java.nio.file.Files;
 import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 class LectureServiceTest {
@@ -73,6 +76,69 @@ class LectureServiceTest {
     }
 
     @Test
+    void camposLongosUsamTextENaoLargeObject() throws Exception {
+        for (String fieldName : List.of("transcricao", "resumo")) {
+            var field = Lecture.class.getDeclaredField(fieldName);
+            assertEquals("TEXT", field.getAnnotation(jakarta.persistence.Column.class).columnDefinition());
+            assertNull(field.getAnnotation(jakarta.persistence.Lob.class));
+        }
+    }
+
+    @Test
+    void detalheDeAulaRetornaResumoETranscricaoLongosSemTruncar() {
+        var lecture = new Lecture();
+        lecture.setId(42L);
+        lecture.setStatus(LectureStatus.FINALIZADO);
+        String transcript = ("A camada de transporte usa TCP/IP para entregar dados entre redes. çã. ").repeat(2_000);
+        String summary = ("Visão geral: roteadores conectam redes; switches encaminham quadros na LAN. çã. ").repeat(1_500);
+        lecture.setTranscricao(transcript);
+        lecture.setResumo(summary);
+        AppUser student = new AppUser();
+        student.setId(9L);
+        student.setRole(UserRole.ESTUDANTE);
+
+        var response = LectureDetailResponse.from(new LectureService(
+                repositoryFor(lecture), new RecordingTranscriptionService(), temporaryDirectory.toString())
+                .buscarPorId(42L, student));
+
+        assertEquals(transcript, response.transcricao());
+        assertEquals(summary, response.resumo());
+        assertTrue(response.transcricao().length() > 100_000);
+        assertTrue(response.resumo().length() > 100_000);
+    }
+
+    @Test
+    void leituraDeDetalheUsaTransacaoSomenteLeitura() throws Exception {
+        assertTrue(LectureService.class.getMethod("buscarPorId", Long.class)
+                .getAnnotation(org.springframework.transaction.annotation.Transactional.class).readOnly());
+        assertTrue(LectureService.class.getMethod("buscarPorId", Long.class, AppUser.class)
+                .getAnnotation(org.springframework.transaction.annotation.Transactional.class).readOnly());
+    }
+
+    @Test
+    void historicoContinuaRetornandoSomenteCamposLeves() {
+        var lecture = new Lecture();
+        lecture.setId(3L);
+        lecture.setTitulo("Redes de computadores");
+        lecture.setStatus(LectureStatus.FINALIZADO);
+        lecture.setTranscricao("Transcrição longa que não deve entrar na listagem. ".repeat(20));
+        lecture.setResumo("Resumo longo que não deve entrar na listagem. ".repeat(20));
+        AppUser student = new AppUser();
+        student.setId(9L);
+        student.setRole(UserRole.ESTUDANTE);
+
+        var rows = new LectureService(repositoryFor(lecture), new RecordingTranscriptionService(), temporaryDirectory.toString())
+                .listar(null, student);
+
+        assertEquals(1, rows.size());
+        assertEquals("Redes de computadores", rows.get(0).titulo());
+        var components = java.util.Arrays.stream(LectureResponse.class.getRecordComponents())
+                .map(java.lang.reflect.RecordComponent::getName).toList();
+        assertFalse(components.contains("transcricao"));
+        assertFalse(components.contains("resumo"));
+    }
+
+    @Test
     void retryUsesPersistedTranscriptWithoutNeedingOriginalAudio() {
         var lecture = new Lecture();
         lecture.setId(42L);
@@ -115,6 +181,40 @@ class LectureServiceTest {
     }
 
     @Test
+    void retryRecoversLegacyLargeObjectReferenceFromOriginalAudio() throws Exception {
+        var audio = temporaryDirectory.resolve("lecture-with-legacy-oid.mp3");
+        Files.write(audio, new byte[]{1, 2, 3});
+        var lecture = new Lecture();
+        lecture.setId(17589L);
+        lecture.setStatus(LectureStatus.FINALIZADO);
+        lecture.setAudioPath(audio.toString());
+        lecture.setTranscricao("17589");
+        lecture.setResumo("{\"overview\":\"A transcrição é muito curta ou repetitiva para formar um resumo confiável.\",\"main_ideas\":[],\"concepts\":[],\"relations\":[]}");
+        var transcriptionService = new RecordingTranscriptionService();
+        var service = new LectureService(repositoryFor(lecture), transcriptionService, temporaryDirectory.toString());
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            assertEquals(LectureStatus.PROCESSANDO, service.retry(17589L).getStatus());
+            TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit);
+            assertEquals(17589L, transcriptionService.transcribedId);
+            assertNull(transcriptionService.summarizedId);
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
+    @Test
+    void numericTranscriptWithValidSummaryIsNotAutomaticallyTreatedAsOid() {
+        var lecture = new Lecture();
+        lecture.setId(20L);
+        lecture.setStatus(LectureStatus.FINALIZADO);
+        lecture.setTranscricao("17589");
+        lecture.setResumo("{\"main_ideas\":[{\"title\":\"Valor\",\"text\":\"A aula registra o valor 17589 como resultado do exemplo.\"}]}");
+        var service = new LectureService(repositoryFor(lecture), new RecordingTranscriptionService(), temporaryDirectory.toString());
+        assertThrows(BadRequestException.class, () -> service.retry(20L));
+    }
+
+    @Test
     void completedLectureWithDetailedSummaryCannotBeQueuedAgain() {
         var lecture = new Lecture();
         lecture.setId(8L);
@@ -149,6 +249,29 @@ class LectureServiceTest {
         var detail = LectureDetailResponse.from(lecture);
         assertEquals(summary, detail.resumo());
         assertEquals(transcript, detail.transcricao());
+    }
+
+    @Test
+    void workerCannotMarkLectureCompleteWithoutTranscript() throws Exception {
+        var lecture = new Lecture();
+        lecture.setId(21L);
+        lecture.setStatus(LectureStatus.PROCESSANDO);
+        var audio = temporaryDirectory.resolve("empty-transcript-audio.mp3");
+        Files.write(audio, new byte[]{1, 2, 3});
+        lecture.setAudioPath(audio.toString());
+        String insufficient = "{\"overview\":\"A transcrição é muito curta.\",\"main_ideas\":[],\"concepts\":[],\"relations\":[]}";
+        var script = temporaryDirectory.resolve("empty-transcript-worker.py");
+        Files.writeString(script, "print('CLASSWATCH_TRANSCRICAO:')\n"
+                + "print('CLASSWATCH_RESUMO:' + " + pythonStringBase64(insufficient) + ")\n"
+                + "print('CLASSWATCH_STATUS:INSUFFICIENT')\n", StandardCharsets.UTF_8);
+        var transcription = new TranscriptionService(repositoryFor(lecture), null, "python", script.toString(), 15, "", "small", "model");
+        var process = TranscriptionService.class.getDeclaredMethod("processar", Long.class);
+        process.setAccessible(true);
+        process.invoke(transcription, 21L);
+
+        assertEquals(LectureStatus.ERRO, lecture.getStatus());
+        assertNull(lecture.getTranscricao());
+        assertNotNull(lecture.getErroProcessamento());
     }
 
     @Test
@@ -227,9 +350,9 @@ class LectureServiceTest {
                 + "print('CLASSWATCH_STATUS:INSUFFICIENT')\n", StandardCharsets.UTF_8);
 
         var transcription = new TranscriptionService(repositoryFor(lecture), null, "python", script.toString(), 15, "", "small", "model");
-        var process = TranscriptionService.class.getDeclaredMethod("processar", Long.class);
+        var process = TranscriptionService.class.getDeclaredMethod("processar", Long.class, boolean.class);
         process.setAccessible(true);
-        process.invoke(transcription, 16L);
+        process.invoke(transcription, 16L, true);
 
         assertEquals(LectureStatus.FINALIZADO, lecture.getStatus());
         assertEquals(savedSummary, lecture.getResumo());
@@ -243,6 +366,8 @@ class LectureServiceTest {
     private LectureRepository repositoryFor(Lecture lecture) {
         return (LectureRepository) Proxy.newProxyInstance(LectureRepository.class.getClassLoader(), new Class<?>[]{LectureRepository.class}, (proxy, method, args) -> switch (method.getName()) {
             case "findById" -> java.util.Optional.of(lecture);
+            case "findVisibleById" -> java.util.Optional.of(lecture);
+            case "findVisibleSummaries" -> List.of(LectureResponse.from(lecture));
             case "save" -> args[0];
             case "toString" -> "LectureRepository test proxy";
             default -> null;

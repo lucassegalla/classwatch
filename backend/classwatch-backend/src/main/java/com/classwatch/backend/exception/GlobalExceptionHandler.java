@@ -8,9 +8,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.security.authentication.BadCredentialsException;
 
 import java.time.LocalDateTime;
 
@@ -26,6 +28,24 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleNotFound(ResourceNotFoundException exception,
                                                     HttpServletRequest request) {
         return build(HttpStatus.NOT_FOUND, exception.getMessage(), request.getRequestURI());
+    }
+
+    @ExceptionHandler(DuplicateEmailException.class)
+    public ResponseEntity<ApiError> handleDuplicateEmail(DuplicateEmailException exception,
+                                                           HttpServletRequest request) {
+        return build(HttpStatus.CONFLICT, exception.getMessage(), request.getRequestURI());
+    }
+
+    @ExceptionHandler(BadCredentialsException.class)
+    public ResponseEntity<ApiError> handleBadCredentials(BadCredentialsException exception,
+                                                           HttpServletRequest request) {
+        return build(HttpStatus.UNAUTHORIZED, "E-mail ou senha inválidos", request.getRequestURI());
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ApiError> handleInvalidRequest(MethodArgumentNotValidException exception,
+                                                          HttpServletRequest request) {
+        return build(HttpStatus.BAD_REQUEST, "Confira o nome, o e-mail e os requisitos da senha.", request.getRequestURI());
     }
 
     @ExceptionHandler({BadRequestException.class, MissingServletRequestParameterException.class})

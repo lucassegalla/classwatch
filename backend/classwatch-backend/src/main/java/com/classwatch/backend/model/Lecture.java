@@ -5,7 +5,7 @@ import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "lectures")
+@Table(name = "lectures", indexes = @Index(name = "idx_lectures_owner_created_at", columnList = "owner_id, created_at"))
 public class Lecture {
 
     @Id
@@ -24,10 +24,10 @@ public class Lecture {
     @Column(unique = true, length = 64)
     private String requestId;
 
-    @Lob
+    @Column(columnDefinition = "TEXT")
     private String transcricao;
 
-    @Lob
+    @Column(columnDefinition = "TEXT")
     private String resumo;
 
     @Enumerated(EnumType.STRING)
@@ -36,6 +36,10 @@ public class Lecture {
 
     @Column(length = 1000)
     private String erroProcessamento;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "owner_id", foreignKey = @ForeignKey(name = "fk_lectures_owner"))
+    private AppUser owner;
 
     private LocalDateTime createdAt;
 
@@ -120,6 +124,10 @@ public class Lecture {
     public void setErroProcessamento(String erroProcessamento) {
         this.erroProcessamento = erroProcessamento;
     }
+
+    public AppUser getOwner() { return owner; }
+
+    public void setOwner(AppUser owner) { this.owner = owner; }
 
     public LocalDateTime getCreatedAt() {
         return createdAt;
